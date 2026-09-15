@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+vendor/
+backend/vendor/
+frontend/node_modules/
+
+# Environment and sensitive secrets
+.env
+.env.*
+!.env.example
+!.env.production
+backend/.env
+backend/.envc
+backend/env
+.env.deploy
+deploy_config.json
+askpass.cmd
+creditential.txt
+backend/creditential.txt
+*credential*.txt
+*cookies*.txt
+civil_cookies.txt
+superadmin-cookies.txt
+backend/civil_cookies.txt
+backend/superadmin-cookies.txt
+
+# Build outputs & archive artifacts
+dist/
+dist-ssr/
+frontend/dist/
+*.zip
+backend_update.zip
+dist.zip
+
+# Server assets dump & test outputs
+backend/assets/
+backend/assets.*/
+backend/api-test-results/
+backend/api-test-results-old/
+scratch/
+backend/app/Controllers/Api/Untitled-1.txt
+
+# CodeIgniter 4 runtime writable directories
+backend/writable/cache/*
+!backend/writable/cache/index.html
+backend/writable/logs/*
+!backend/writable/logs/index.html
+backend/writable/session/*
+!backend/writable/session/index.html
+backend/writable/uploads/*
+!backend/writable/uploads/index.html
+backend/writable/debugbar/*
+!backend/writable/debugbar/index.html
+php_errors.log
+
+# IDE & OS specific files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

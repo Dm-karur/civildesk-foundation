@@ -1,0 +1,46 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # 1. Pass Authorization Header for Bearer token & Basic Auth
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+  # 2. Route API calls to CodeIgniter 4 backend
+  RewriteCond %{REQUEST_URI} ^/api/(.*)$ [NC]
+  RewriteRule ^api/(.*)$ backend/public/index.php/$1 [L,QSA]
+
+  # 3. Serve physical static files & directories directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # 4. Prevent missing asset files (.js, .css, etc.) from falling back to index.html
+  RewriteCond %{REQUEST_URI} \.(js|mjs|css|map|json|png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot)$ [NC]
+  RewriteRule ^ - [R=404,L]
+
+  # 5. Fallback all SPA routes to React index.html
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType text/javascript .js .mjs
+  AddType text/css .css
+  AddType image/svg+xml .svg
+  AddType application/manifest+json .webmanifest .json
+</IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(js|mjs)$">
+    Header set Content-Type "text/javascript; charset=UTF-8"
+  </FilesMatch>
+  <FilesMatch "\.css$">
+    Header set Content-Type "text/css; charset=UTF-8"
+  </FilesMatch>
+  <FilesMatch "(index\.html|sw\.js|manifest\.json)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires 0
+  </FilesMatch>
+</IfModule>
+
