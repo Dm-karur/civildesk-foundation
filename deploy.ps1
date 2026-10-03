@@ -97,22 +97,27 @@ if ($Deploy -or $DeployBackend) {
     $ClientsController = Join-Path $WorkspaceRoot "backend\app\Controllers\Api\ClientsController.php"
     $ClientModel = Join-Path $WorkspaceRoot "backend\app\Models\ClientModel.php"
     $BackendRoutes = Join-Path $WorkspaceRoot "backend\app\Config\Routes.php"
+    $BackendPaths = Join-Path $WorkspaceRoot "backend\app\Config\Paths.php"
 
     $destinations = @(
         $RemotePublicHtml
     )
 
     foreach ($dest in $destinations) {
-        Write-Host "Uploading controllers, models, and routes to $dest..." -ForegroundColor Cyan
+        Write-Host "Uploading controllers, models, routes, and paths to $dest..." -ForegroundColor Cyan
         scp -P $Port -o StrictHostKeyChecking=no $BackendController "$User@${HostName}:${dest}/backend/app/Controllers/Api/SubcontractMastersController.php"
         scp -P $Port -o StrictHostKeyChecking=no $DailyWagesRegisterController "$User@${HostName}:${dest}/backend/app/Controllers/Api/DailyWagesRegisterController.php"
         scp -P $Port -o StrictHostKeyChecking=no $NavigationController "$User@${HostName}:${dest}/backend/app/Controllers/Api/NavigationController.php"
         scp -P $Port -o StrictHostKeyChecking=no $ClientsController "$User@${HostName}:${dest}/backend/app/Controllers/Api/ClientsController.php"
         scp -P $Port -o StrictHostKeyChecking=no $ClientModel "$User@${HostName}:${dest}/backend/app/Models/ClientModel.php"
         scp -P $Port -o StrictHostKeyChecking=no $BackendRoutes "$User@${HostName}:${dest}/backend/app/Config/Routes.php"
+        scp -P $Port -o StrictHostKeyChecking=no $BackendPaths "$User@${HostName}:${dest}/backend/app/Config/Paths.php"
+
+        Write-Host "Ensuring writable directories exist with proper permissions..." -ForegroundColor Cyan
+        Execute-RemoteCommand "cd $dest/backend && mkdir -p writable/cache writable/logs writable/session writable/uploads writable/debugbar && chmod -R 775 writable"
     }
 
-    Write-Host "[SUCCESS] Backend controllers and routes deployed successfully!" -ForegroundColor Green
+    Write-Host "[SUCCESS] Backend controllers, routes, paths, and writable folders deployed successfully!" -ForegroundColor Green
 }
 
 if ($Deploy -or $RunSql) {
