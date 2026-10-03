@@ -18,6 +18,19 @@ namespace Config;
  */
 class Paths
 {
+    public function __construct()
+    {
+        if (!is_dir($this->writableDirectory)) {
+            @mkdir($this->writableDirectory, 0775, true);
+        }
+        foreach (['cache', 'logs', 'session', 'uploads', 'debugbar'] as $sub) {
+            $subDir = $this->writableDirectory . DIRECTORY_SEPARATOR . $sub;
+            if (!is_dir($subDir)) {
+                @mkdir($subDir, 0775, true);
+            }
+        }
+    }
+
     /**
      * ---------------------------------------------------------------
      * SYSTEM FOLDER NAME
