@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Building2, Plus, Wallet, Search, CheckCircle2,
   MapPin, Clock, ArrowRight, ShieldCheck, UserCircle,
   FileText, Trash2, Tag, Calendar, ArrowLeft,
   Download, FileSpreadsheet, Layers, ChevronLeft,
-  ChevronRight, Eye, Users, TrendingUp, RefreshCw, X
+  ChevronRight, Eye, Users, TrendingUp, RefreshCw, X, Printer
 } from 'lucide-react';
 import { PageHeader } from '../../../components/layout/PageHeader';
 import { PageContainer } from '../../../components/layout/PageContainer';
@@ -18,8 +19,9 @@ import { Input } from '../../../components/ui/Input';
 import { Modal } from '../../../components/ui/Modal';
 import { FormField } from '../../../components/composite/FormField';
 import { toast } from '../../../components/composite/Toast';
-import { dailyWagesApi, subcontractsApi } from '../../../api/apiservice';
+import { dailyWagesApi, subcontractsApi, subcontractorTypesApi } from '../../../api/apiservice';
 import { exportWeeklyWagesToExcel, exportWeeklyWagesToPdf } from '../utils/wageExportUtils';
+import { generateAndDownloadA5SlipFromItem, printA5SlipFromItem } from '../../subcontracts/utils/a5SlipExportUtils';
 
 // Helper to get week start (Monday) and week end (Sunday)
 function getWeekRange(date = new Date()) {
@@ -37,7 +39,10 @@ function getWeekRange(date = new Date()) {
   };
 }
 
-export function DailyWagesPage() {
+export function DailyWagesPage({ isSubWorkModule = false }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isSubWork = isSubWorkModule || window.location.pathname.includes('/subcontracts');
   const [activeTab, setActiveTab] = useState('sites'); // 'sites' | 'registers' | 'weekly' | 'templates'
   const [loading, setLoading] = useState(false);
 
@@ -64,6 +69,9 @@ export function DailyWagesPage() {
   const [itemSearch, setItemSearch] = useState('');
   const [itemFilter, setItemFilter] = useState('All');
   const [submittingWages, setSubmittingWages] = useState(false);
+
+  // Post-submit modal state
+  const [loggedSuccessData, setLoggedSuccessData] = useState(null);
 
   // Registers History State
   const [dailyWagesList, setDailyWagesList] = useState([]);
@@ -112,7 +120,18 @@ export function DailyWagesPage() {
       setSites(setup.sites || []);
       setSubcontractors(setup.subcontractors || []);
       setSubcontractorTypes(setup.subcontractor_types || []);
-      setDefaultTemplates(setup.default_templates || []);
+      const tmpls = setup.templates || setup.default_templates || [];
+      const normalized = (tmpls || []).map((t, idx) => ({
+        ...t,
+        id: t.id || `tmpl-${idx}`,
+        item_name: t.item_name || t.item_description || t.description || 'Trade Item',
+        description: t.description || t.item_description || t.item_name || 'Trade Item',
+        classification: t.classification ? (t.classification.charAt(0).toUpperCase() + t.classification.slice(1).toLowerCase()) : 'Manpower',
+        uom: t.uom || t.unit || 'Nos',
+        unit: t.unit || t.uom || 'Nos',
+        default_rate: Number(t.default_rate !== undefined ? t.default_rate : (t.rate || 0)),
+      }));
+      setDefaultTemplates(normalized);
     } catch (err) {
       console.error('Failed to load setup:', err);
       toast.error('Failed to load sites and subcontractors.');
@@ -136,28 +155,99 @@ export function DailyWagesPage() {
     loadRegisters();
   }, [loadSetup, loadRegisters]);
 
+  // Selected subcontractor details
+  const selectedSub = useMemo(() => {
+    return subcontractors.find(s => String(s.id) === String(selectedSubcontractorId));
+  }, [subcontractors, selectedSubcontractorId]);
+
   // Load templates when subcontractor changes in Entry Form
   useEffect(() => {
     if (!selectedSubcontractorId) return;
-    
-    // Check if we need to fetch specific templates for this subcontractor
-    dailyWagesApi.setup({
-      subcontractor_id: selectedSubcontractorId,
-      site_id: selectedSite?.id,
-    }).then(res => {
-      const tmpls = res?.data?.setup?.default_templates;
-      if (Array.isArray(tmpls) && tmpls.length > 0) {
-        setDefaultTemplates(tmpls);
-        const initialRates = {};
-        tmpls.forEach(t => {
-          initialRates[t.id] = Number(t.default_rate || 0);
-        });
-        setWageRates(prev => ({ ...prev, ...initialRates }));
+
+    let isMounted = true;
+
+    const fetchSubcontractorTemplates = async () => {
+      try {
+        let tmpls = [];
+        const subTypeId = selectedSub?.contractor_type_id || selectedSub?.subcontractor_type_id;
+
+        // 1. Try subcontractor trade type templates first (Template Items configured for this trade)
+        if (subTypeId && subcontractorTypesApi?.templates) {
+          try {
+            const tRes = await subcontractorTypesApi.templates(subTypeId);
+            const tItems = tRes?.data?.templates || tRes?.data || [];
+            if (Array.isArray(tItems) && tItems.length > 0) {
+              tmpls = tItems;
+            }
+          } catch (err) {
+            console.warn('subcontractorTypesApi.templates error:', err);
+          }
+        }
+
+        // 2. If empty, try contractor-specific templates
+        if ((!tmpls || tmpls.length === 0) && subcontractsApi?.contractors?.templates) {
+          try {
+            const cRes = await subcontractsApi.contractors.templates(selectedSubcontractorId);
+            const cItems = cRes?.data?.templates || cRes?.data || [];
+            if (Array.isArray(cItems) && cItems.length > 0) {
+              tmpls = cItems;
+            }
+          } catch (err) {
+            console.warn('subcontractsApi.contractors.templates error:', err);
+          }
+        }
+
+        // 3. If still empty, fetch from dailyWagesApi.setup
+        if (!tmpls || tmpls.length === 0) {
+          try {
+            const res = await dailyWagesApi.setup({
+              subcontractor_id: selectedSubcontractorId,
+              site_id: selectedSite?.id,
+            });
+            const setup = res?.data?.setup || {};
+            tmpls = setup.templates || setup.default_templates || [];
+          } catch (err) {
+            console.warn('dailyWagesApi.setup error:', err);
+          }
+        }
+
+        if (!isMounted) return;
+
+        if (Array.isArray(tmpls) && tmpls.length > 0) {
+          const normalized = tmpls.map((t, idx) => ({
+            ...t,
+            id: t.id || `tmpl-${idx}`,
+            item_name: t.item_name || t.item_description || t.description || 'Trade Item',
+            description: t.description || t.item_description || t.item_name || 'Trade Item',
+            classification: t.classification ? (t.classification.charAt(0).toUpperCase() + t.classification.slice(1).toLowerCase()) : 'Manpower',
+            uom: t.uom || t.unit || 'Nos',
+            unit: t.unit || t.uom || 'Nos',
+            default_rate: Number(t.default_rate !== undefined ? t.default_rate : (t.rate || 0)),
+            subcontractor_id: t.subcontractor_id ? String(t.subcontractor_id) : String(selectedSubcontractorId),
+            subcontractor_type_id: t.subcontractor_type_id ? String(t.subcontractor_type_id) : (subTypeId ? String(subTypeId) : null),
+          }));
+
+          setDefaultTemplates(normalized);
+          const initialRates = {};
+          normalized.forEach(t => {
+            initialRates[t.id] = Number(t.default_rate || 0);
+          });
+          setWageRates(prev => ({ ...prev, ...initialRates }));
+        } else {
+          setDefaultTemplates([]);
+          setWageRates({});
+        }
+      } catch (err) {
+        console.error('Failed to load subcontractor templates:', err);
       }
-    }).catch(err => {
-      console.error('Failed to load subcontractor templates:', err);
-    });
-  }, [selectedSubcontractorId, selectedSite]);
+    };
+
+    fetchSubcontractorTemplates();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedSubcontractorId, selectedSite, selectedSub]);
 
   // Handle open entry form
   const handleOpenWages = (site) => {
@@ -177,21 +267,39 @@ export function DailyWagesPage() {
     setSelectedSite(null);
   };
 
-  // Selected subcontractor details
-  const selectedSub = useMemo(() => {
-    return subcontractors.find(s => String(s.id) === String(selectedSubcontractorId));
-  }, [subcontractors, selectedSubcontractorId]);
+  // Auto-open site entry if site_id param is present
+  useEffect(() => {
+    const siteParam = searchParams.get('site_id');
+    if (siteParam && sites.length > 0 && !selectedSite) {
+      const match = sites.find(s => String(s.id) === String(siteParam));
+      if (match) {
+        handleOpenWages(match);
+      }
+    }
+    const contractorParam = searchParams.get('contractor_id') || searchParams.get('subcontractor_id');
+    if (contractorParam && !selectedSubcontractorId) {
+      setSelectedSubcontractorId(String(contractorParam));
+    }
+  }, [searchParams, sites, selectedSite, selectedSubcontractorId]);
 
   // Available templates based on selected subcontractor
   const availableTemplates = useMemo(() => {
     if (!selectedSub) return defaultTemplates;
     const subTypeId = selectedSub.contractor_type_id || selectedSub.subcontractor_type_id;
-    return defaultTemplates.filter(t => {
+
+    // Check if there are trade-specific or subcontractor-specific templates
+    const tradeOrSubTemplates = defaultTemplates.filter(t => {
       if (t.subcontractor_id && String(t.subcontractor_id) === String(selectedSub.id)) return true;
-      if (t.subcontractor_type_id && String(t.subcontractor_type_id) === String(subTypeId)) return true;
-      if (!t.subcontractor_id && !t.subcontractor_type_id) return true; // Global template
+      if (t.subcontractor_type_id && subTypeId && String(t.subcontractor_type_id) === String(subTypeId)) return true;
       return false;
     });
+
+    if (tradeOrSubTemplates.length > 0) {
+      return tradeOrSubTemplates;
+    }
+
+    // Only fallback to global templates if this subcontractor trade has no templates registered
+    return defaultTemplates.filter(t => !t.subcontractor_id && !t.subcontractor_type_id);
   }, [selectedSub, defaultTemplates]);
 
   // Handle Custom Line Items
@@ -279,11 +387,15 @@ export function DailyWagesPage() {
       const lines = allTemplates
         .filter(t => Number(wageEntries[t.id]) > 0)
         .map(t => ({
-          template_id: t.isCustom ? null : t.id,
-          item_name: t.item_name || t.description || 'General Trade',
+          template_id: t.isCustom ? null : (typeof t.id === 'number' ? t.id : null),
+          item_name: t.item_name || t.description || t.item_description || 'General Trade',
+          description: t.item_name || t.description || t.item_description || 'General Trade',
           classification: t.classification || 'Manpower',
-          uom: t.uom || 'shift',
+          uom: t.uom || t.unit || 'shift',
+          unit: t.unit || t.uom || 'shift',
+          quantity: Number(wageEntries[t.id] || 0),
           shift_quantity: Number(wageEntries[t.id] || 0),
+          rate: Number(wageRates[t.id] !== undefined ? wageRates[t.id] : (t.default_rate || 0)),
           unit_rate: Number(wageRates[t.id] !== undefined ? wageRates[t.id] : (t.default_rate || 0)),
           remarks: wageRemarks[t.id] || null,
         }));
@@ -292,13 +404,25 @@ export function DailyWagesPage() {
         site_id: selectedSite.id,
         subcontractor_id: selectedSubcontractorId,
         wage_date: wageDate,
+        global_remarks: globalRemarks || null,
         remarks: globalRemarks || null,
         lines,
       };
 
-      await dailyWagesApi.create(payload);
+      const createdRes = await dailyWagesApi.create(payload);
+      const createdData = createdRes?.data?.daily_wage || createdRes?.data?.data?.daily_wage || createdRes?.data?.register || createdRes?.data || {};
       toast.success('Daily wages recorded successfully!');
-      handleCloseWages();
+      setLoggedSuccessData({
+        register_id: createdData.id || createdData.voucher_no || `DWR-${Date.now().toString().slice(-4)}`,
+        voucher_no: createdData.voucher_no || createdData.register_no || `DWR-${Date.now().toString().slice(-4)}`,
+        site: selectedSite,
+        subcontractor_id: selectedSubcontractorId,
+        subcontractor_name: selectedSub?.contractor_name || 'Subcontractor',
+        trade: selectedSub?.subcontractor_type_label || selectedSub?.contractor_type_name || 'Trade Gang',
+        total_shifts: totalShifts,
+        total_amount: totalWages,
+        wage_date: wageDate,
+      });
       loadRegisters();
     } catch (err) {
       console.error('Failed to submit daily wages:', err);
@@ -375,8 +499,10 @@ export function DailyWagesPage() {
     try {
       const payload = {
         item_name: newTemplateForm.item_name,
+        description: newTemplateForm.item_name,
         classification: newTemplateForm.classification,
-        uom: newTemplateForm.uom,
+        uom: newTemplateForm.uom || 'Nos',
+        unit: newTemplateForm.uom || 'Nos',
         default_rate: Number(newTemplateForm.default_rate),
         subcontractor_type_id: newTemplateForm.subcontractor_type_id ? Number(newTemplateForm.subcontractor_type_id) : null,
         subcontractor_id: newTemplateForm.subcontractor_id ? Number(newTemplateForm.subcontractor_id) : null,
@@ -506,19 +632,32 @@ export function DailyWagesPage() {
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h1 className="text-xl font-bold text-text-primary">Record Daily Wages</h1>
+              <h1 className="text-xl font-bold text-text-primary">
+                {isSubWork ? 'Record Daily Sub Work' : 'Record Daily Wages'}
+              </h1>
               <p className="text-[13px] text-text-secondary">Site: <span className="font-semibold text-text-primary">{selectedSite.site_name}</span> ({selectedSite.site_code})</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsSubcontractorModalOpen(true)}
-            className="gap-2 font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            New Subcontractor
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/subcontracts/weekly-payments?site_id=${selectedSite.id}&contractor_id=${selectedSubcontractorId || ''}`)}
+              className="gap-1.5 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              Weekly Slips
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsSubcontractorModalOpen(true)}
+              className="gap-2 font-medium"
+            >
+              <Plus className="w-4 h-4" />
+              New Subcontractor
+            </Button>
+          </div>
         </div>
 
         <div className="bg-surface rounded-xl border border-border shadow-sm flex flex-col w-full mb-8">
@@ -534,10 +673,22 @@ export function DailyWagesPage() {
               </div>
             </div>
             {selectedSubcontractorId && (
-              <Badge variant="success" className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1.5 px-3 py-1.5 shadow-sm font-bold">
-                <Tag className="w-3.5 h-3.5" />
-                {availableTemplates.length} Trade Items Loaded
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="success" className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1.5 px-3 py-1.5 shadow-sm font-bold">
+                  <Tag className="w-3.5 h-3.5" />
+                  {availableTemplates.length} Trade Items Loaded
+                </Badge>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate(`/subcontracts/weekly-payments?site_id=${selectedSite.id}&contractor_id=${selectedSubcontractorId}`)}
+                  className="h-8 text-xs gap-1 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  Go to Weekly Slip
+                </Button>
+              </div>
             )}
           </div>
 
@@ -554,7 +705,7 @@ export function DailyWagesPage() {
                           { value: '', label: 'Select Subcontractor for this site...' },
                           ...subcontractors.map(sub => ({
                             value: String(sub.id),
-                            label: `${sub.contractor_name} — [${sub.subcontractor_type_label || 'General Trade'}]`
+                            label: `${sub.contractor_name} — [${sub.subcontractor_type_label || sub.contractor_type_name || 'General Trade'}]`
                           }))
                         ]}
                         value={selectedSubcontractorId}
@@ -593,7 +744,7 @@ export function DailyWagesPage() {
                     <CheckCircle2 className="w-4.5 h-4.5" />
                     <span className="font-bold">{selectedSub?.contractor_name}</span>
                     <span className="text-primary/70">•</span>
-                    <span className="font-medium">Trade: {selectedSub?.subcontractor_type_label || 'Standard'}</span>
+                    <span className="font-medium">Trade: {selectedSub?.subcontractor_type_label || selectedSub?.contractor_type_name || 'Standard'}</span>
                     <span className="text-primary/70">•</span>
                     <span>{availableTemplates.length} default rates auto-applied</span>
                   </div>
@@ -684,7 +835,7 @@ export function DailyWagesPage() {
                                       className="h-8 text-[12px] font-bold w-full"
                                       placeholder="Custom Item Name"
                                     />
-                                  ) : (t.item_name || t.description)}
+                                  ) : (t.item_name || t.description || t.item_description)}
                                 </td>
                                 <td className="px-2 py-2.5 text-center align-middle">
                                   {t.isCustom ? (
@@ -712,7 +863,7 @@ export function DailyWagesPage() {
                                       onChange={(e) => handleCustomItemChange(t.id, 'uom', e.target.value)}
                                       className="h-8 text-[12px] text-center w-full"
                                     />
-                                  ) : t.uom}
+                                  ) : (t.uom || t.unit || 'Nos')}
                                 </td>
                                 <td className="px-2 py-2.5">
                                   <Input
@@ -802,12 +953,21 @@ export function DailyWagesPage() {
             </div>
 
             {/* Sticky Form Footer */}
-            <div className="mt-auto border-t border-border bg-surface-muted/40 px-4 sm:px-6 py-4 flex items-center justify-between rounded-b-xl">
+            <div className="mt-auto border-t border-border bg-surface-muted/40 px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-3 rounded-b-xl">
               <div className="text-[13px] font-semibold text-text-secondary">
                 <span className="text-text-primary font-bold">{filledItemsCount}</span> items active • <span className="text-emerald-700 font-bold">₹{totalWages.toLocaleString('en-IN')}</span> Total
               </div>
-              <div className="flex gap-3">
-                <Button type="button" variant="outline" onClick={handleCloseWages} className="font-semibold px-6">
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate(`/subcontracts/weekly-payments?site_id=${selectedSite.id}&contractor_id=${selectedSubcontractorId || ''}&date=${wageDate}`)}
+                  className="font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50 gap-1.5"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  Weekly Slip
+                </Button>
+                <Button type="button" variant="outline" onClick={handleCloseWages} className="font-semibold px-4">
                   Cancel
                 </Button>
                 <Button
@@ -822,6 +982,110 @@ export function DailyWagesPage() {
             </div>
           </form>
         </div>
+
+        {/* Post-submission Success Modal */}
+        <Modal
+          isOpen={!!loggedSuccessData}
+          onClose={() => setLoggedSuccessData(null)}
+          title="Daily Wages Logged Successfully"
+        >
+          {loggedSuccessData && (
+            <div className="space-y-5 p-1">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-sm font-bold text-emerald-950">Daily Wages Recorded Successfully</h4>
+                  <p className="text-xs text-emerald-700 mt-0.5">
+                    The labour entries have been saved to the daily register and compiled into the weekly subcontract account.
+                  </p>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs bg-white/70 p-2.5 rounded-lg border border-emerald-100 font-medium">
+                    <div>
+                      <span className="text-text-muted text-[11px]">Subcontractor:</span>
+                      <div className="font-bold text-text-primary">{loggedSuccessData.subcontractor_name}</div>
+                    </div>
+                    <div>
+                      <span className="text-text-muted text-[11px]">Log Date:</span>
+                      <div className="font-bold text-text-primary">{loggedSuccessData.wage_date}</div>
+                    </div>
+                    <div>
+                      <span className="text-text-muted text-[11px]">Total Shifts / Mandays:</span>
+                      <div className="font-bold text-text-primary">{loggedSuccessData.total_shifts}</div>
+                    </div>
+                    <div>
+                      <span className="text-text-muted text-[11px]">Total Wages:</span>
+                      <div className="font-bold text-emerald-700">₹{Number(loggedSuccessData.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-full gap-2 font-bold shadow-md bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => {
+                    const siteId = loggedSuccessData.site?.id;
+                    const subId = loggedSuccessData.subcontractor_id;
+                    const date = loggedSuccessData.wage_date;
+                    setLoggedSuccessData(null);
+                    navigate(`/subcontracts/weekly-payments?site_id=${siteId}&contractor_id=${subId}&date=${date}`);
+                  }}
+                >
+                  <FileSpreadsheet className="w-5 h-5" />
+                  Go to Weekly Slip
+                  <ArrowRight className="w-4 h-4 ml-auto" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="md"
+                  className="w-full gap-2 font-semibold text-blue-700 border-blue-200 hover:bg-blue-50"
+                  onClick={() => {
+                    const siteId = loggedSuccessData.site?.id;
+                    const subId = loggedSuccessData.subcontractor_id;
+                    const date = loggedSuccessData.wage_date;
+                    setLoggedSuccessData(null);
+                    navigate(`/subcontracts/weekly-payments/new?site_id=${siteId}&contractor_id=${subId}&date=${date}`);
+                  }}
+                >
+                  <Printer className="w-4 h-4 text-blue-600" />
+                  Generate Weekly Payment Slip (Maistry Slip)
+                </Button>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={() => {
+                      setLoggedSuccessData(null);
+                      setWageEntries({});
+                      setWageRemarks({});
+                      setCustomItems([]);
+                      setGlobalRemarks('');
+                    }}
+                  >
+                    Log Another Subcontractor
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-text-muted hover:text-text-primary"
+                    onClick={() => {
+                      setLoggedSuccessData(null);
+                      handleCloseWages();
+                    }}
+                  >
+                    Back to Sites
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </Modal>
       </PageContainer>
     );
   }
@@ -832,8 +1096,13 @@ export function DailyWagesPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Subcontractor Daily Wages & Weekly Reports"
-        breadcrumbs={[
+        title={isSubWork ? "Daily Sub Work Entry" : "Subcontractor Daily Wages & Weekly Reports"}
+        subtitle={isSubWork ? "Record subcontractor gang daily work, manpower, equipment rentals, and piece-rate entries for weekly slips." : "Manage daily labour shifts, equipment rentals, and contractor wages across construction sites."}
+        breadcrumbs={isSubWork ? [
+          { label: 'Dashboard', href: '/dashboard' },
+          { label: 'Subcontracts', href: '/subcontracts/subcontractors' },
+          { label: 'Daily Sub Work Entry' }
+        ] : [
           { label: 'Dashboard', href: '/dashboard' },
           { label: 'Labour & Wages', href: '/labour' },
           { label: 'Daily Wages' }
@@ -874,6 +1143,15 @@ export function DailyWagesPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/subcontracts/weekly-payments')}
+            className="gap-1.5 text-xs font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            Weekly Payment Slips
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -1361,22 +1639,73 @@ export function DailyWagesPage() {
                         </Badge>
                       </td>
                       <td className="px-3 py-2.5 text-center">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={async () => {
-                            try {
-                              const res = await dailyWagesApi.get(reg.id);
-                              setSelectedRegisterDetails(res?.data?.register || reg);
-                            } catch {
-                              toast.error('Failed to load register details.');
-                            }
-                          }}
-                          className="h-7 text-xs px-2.5 gap-1 font-medium"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          View
-                        </Button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const subId = reg.subcontractor_id || reg.contractor_id;
+                              navigate(`/subcontracts/weekly-payments?site_id=${reg.site_id}&contractor_id=${subId}&date=${reg.wage_date}`);
+                            }}
+                            className="h-7 text-xs px-2 gap-1 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                            title="Go to Weekly Slip"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                            Weekly Slip
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const res = await dailyWagesApi.get(reg.id);
+                                setSelectedRegisterDetails(res?.data?.register || reg);
+                              } catch {
+                                toast.error('Failed to load register details.');
+                              }
+                            }}
+                            className="h-7 text-xs px-2 gap-1 font-medium"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            View
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const res = await dailyWagesApi.get(reg.id);
+                                const details = res?.data?.register || reg;
+                                await generateAndDownloadA5SlipFromItem({
+                                  ...details,
+                                  id: details.id || reg.id,
+                                  voucher_no: details.register_no || reg.register_no || `DWR-${reg.id}`,
+                                  contractor_name: details.contractor_name || reg.contractor_name,
+                                  site_name: details.site_name || reg.site_name,
+                                  payment_date: details.wage_date || reg.wage_date,
+                                  total_cost: details.total_wage_amount || reg.total_wage_amount,
+                                  trades: (details.lines || []).map((l, i) => ({
+                                    order: i + 1,
+                                    item: l.item_name,
+                                    rate: l.unit_rate,
+                                    qty: l.shift_quantity,
+                                    amount: l.line_total_amount,
+                                    classification: l.classification,
+                                    unit: l.uom,
+                                  })),
+                                });
+                                toast.success('Weekly Slip downloaded!');
+                              } catch (err) {
+                                toast.error('Failed to download slip.');
+                              }
+                            }}
+                            className="h-7 text-xs px-2 gap-1 text-primary hover:bg-primary/10"
+                            title="Download Weekly Slip (A5 PDF)"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            Slip
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -1433,7 +1762,7 @@ export function DailyWagesPage() {
                         {idx + 1}
                       </td>
                       <td className="px-3 py-2.5 font-bold text-text-primary text-[13px]">
-                        {t.item_name}
+                        {t.item_name || t.description || t.item_description}
                       </td>
                       <td className="px-3 py-2.5 text-center">
                         <Badge variant="neutral" className="text-[10px] font-bold">
@@ -1441,7 +1770,7 @@ export function DailyWagesPage() {
                         </Badge>
                       </td>
                       <td className="px-3 py-2.5 text-center text-text-muted font-medium">
-                        {t.uom}
+                        {t.uom || t.unit || 'Nos'}
                       </td>
                       <td className="px-3 py-2.5 text-right pr-6 font-bold text-emerald-700 text-[13px]">
                         ₹{Number(t.default_rate || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
@@ -1703,7 +2032,60 @@ export function DailyWagesPage() {
               </div>
             )}
 
-            <div className="flex justify-end pt-3 border-t border-border">
+            <div className="flex justify-between items-center pt-3 border-t border-border flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    await generateAndDownloadA5SlipFromItem({
+                      ...selectedRegisterDetails,
+                      voucher_no: selectedRegisterDetails.register_no || `DWR-${selectedRegisterDetails.id}`,
+                      payment_date: selectedRegisterDetails.wage_date,
+                      total_cost: selectedRegisterDetails.total_wage_amount,
+                      trades: (selectedRegisterDetails.lines || []).map((l, i) => ({
+                        order: i + 1,
+                        item: l.item_name,
+                        rate: l.unit_rate,
+                        qty: l.shift_quantity,
+                        amount: l.line_total_amount,
+                        classification: l.classification,
+                        unit: l.uom,
+                      })),
+                    });
+                    toast.success('Weekly Slip downloaded!');
+                  }}
+                  className="h-8 text-xs gap-1 font-semibold"
+                >
+                  <Download className="w-3.5 h-3.5 text-primary" />
+                  Download Slip (A5 PDF)
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    printA5SlipFromItem({
+                      ...selectedRegisterDetails,
+                      voucher_no: selectedRegisterDetails.register_no || `DWR-${selectedRegisterDetails.id}`,
+                      payment_date: selectedRegisterDetails.wage_date,
+                      total_cost: selectedRegisterDetails.total_wage_amount,
+                      trades: (selectedRegisterDetails.lines || []).map((l, i) => ({
+                        order: i + 1,
+                        item: l.item_name,
+                        rate: l.unit_rate,
+                        qty: l.shift_quantity,
+                        amount: l.line_total_amount,
+                        classification: l.classification,
+                        unit: l.uom,
+                      })),
+                    });
+                  }}
+                  className="h-8 text-xs gap-1"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Print Slip
+                </Button>
+              </div>
               <Button
                 variant="outline"
                 onClick={() => setSelectedRegisterDetails(null)}

@@ -130,6 +130,19 @@ export const permissionsApi = {
 };
 export const navigationApi = {
     list: () => request.get('/navigation').then((response) => response?.data?.navigation ?? []),
+    modules: () => request.get('/navigation/modules').then((response) => response?.data?.modules ?? []),
+    toggleModule: (payload) => request.post('/navigation/modules/toggle', payload),
+    bulkToggleModules: (payload) => request.post('/navigation/modules/bulk', payload),
+};
+export const modulesApi = {
+    list: () => navigationApi.modules(),
+    toggle: (codeOrId, is_enabled) => {
+        const payload = typeof codeOrId === 'number'
+            ? { module_id: codeOrId, is_enabled }
+            : { item_code: codeOrId, is_enabled };
+        return navigationApi.toggleModule(payload);
+    },
+    bulkUpdate: (modules) => navigationApi.bulkToggleModules({ modules }),
 };
 const masterList = (key) => mastersApi.all().then((response) => response?.data?.[key] ?? response?.[key] ?? []);
 export const userTypeMastersApi = {
@@ -305,11 +318,15 @@ export const dailyWagesApi = {
     update: (id, payload) => request.patch(`/daily-wages/${enc(id)}`, payload),
     replace: (id, payload) => request.put(`/daily-wages/${enc(id)}`, payload),
     cancel: (id) => action('/daily-wages', id, 'cancel'),
+    approve: (id, payload) => action('/daily-wages', id, 'approve', payload),
+    pay: (id, payload) => action('/daily-wages', id, 'pay', payload),
     templates: (params) => request.get('/daily-wages/templates', params),
     createTemplate: (payload) => request.post('/daily-wages/templates', payload),
     updateTemplate: (id, payload) => request.patch(`/daily-wages/templates/${enc(id)}`, payload),
     weeklyReport: (params) => request.get('/daily-wages/weekly-report', params),
 };
+export const subWorkApi = dailyWagesApi;
+
 
 export const labourPaymentsApi = {
     list: (params) => request.get('/labour-payments', params),

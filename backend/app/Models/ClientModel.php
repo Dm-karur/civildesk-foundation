@@ -45,13 +45,13 @@ class ClientModel extends Model
         'id'                         => 'integer',
         'company_id'                 => 'integer',
         'branch_id'                  => '?integer',
-        'client_type_id'             => 'integer',
-        'gst_registration_type_id'   => 'integer',
+        'client_type_id'             => '?integer',
+        'gst_registration_type_id'   => '?integer',
         'payment_terms_days'         => 'integer',
         'credit_limit'               => 'float',
         'tax_deduction_applicable'   => 'boolean',
-        'client_source_id'           => 'integer',
-        'client_status_id'           => 'integer',
+        'client_source_id'           => '?integer',
+        'client_status_id'           => '?integer',
         'created_by'                 => '?integer',
         'updated_by'                 => '?integer',
     ];
@@ -65,24 +65,24 @@ class ClientModel extends Model
     protected $validationRules = [
         'company_id' => 'required|is_natural_no_zero',
         'branch_id' => 'permit_empty|is_natural_no_zero',
-        'client_code' => 'required|max_length[30]',
+        'client_code' => 'permit_empty|max_length[30]',
         'client_name' => 'required|max_length[180]',
         'legal_name' => 'permit_empty|max_length[220]',
-        'client_type_id' => 'required|is_natural_no_zero',
+        'client_type_id' => 'permit_empty|is_natural_no_zero',
         'industry_type' => 'permit_empty|max_length[120]',
-        'gst_registration_type_id' => 'required|is_natural_no_zero',
+        'gst_registration_type_id' => 'permit_empty|is_natural_no_zero',
         'gstin' => 'permit_empty|exact_length[15]|alpha_numeric',
         'pan' => 'permit_empty|exact_length[10]|alpha_numeric',
         'tan' => 'permit_empty|exact_length[10]|alpha_numeric',
         'email' => 'permit_empty|valid_email|max_length[150]',
         'phone' => 'permit_empty|max_length[25]',
         'website' => 'permit_empty|valid_url_strict|max_length[200]',
-        'billing_currency' => 'required|exact_length[3]|alpha',
-        'payment_terms_days' => 'required|is_natural',
-        'credit_limit' => 'required|decimal|greater_than_equal_to[0]',
-        'tax_deduction_applicable' => 'required|in_list[0,1]',
-        'client_source_id' => 'required|is_natural_no_zero',
-        'client_status_id' => 'required|is_natural_no_zero',
+        'billing_currency' => 'permit_empty|exact_length[3]|alpha',
+        'payment_terms_days' => 'permit_empty|is_natural',
+        'credit_limit' => 'permit_empty|decimal|greater_than_equal_to[0]',
+        'tax_deduction_applicable' => 'permit_empty|in_list[0,1]',
+        'client_source_id' => 'permit_empty|is_natural_no_zero',
+        'client_status_id' => 'permit_empty|is_natural_no_zero',
     ];
 
     protected $beforeInsert = ['normalizeData'];
@@ -95,8 +95,12 @@ class ClientModel extends Model
         }
 
         foreach (['client_code', 'gstin', 'pan', 'tan', 'billing_currency'] as $field) {
-            if (array_key_exists($field, $data['data']) && $data['data'][$field] !== null) {
-                $data['data'][$field] = strtoupper(trim((string) $data['data'][$field]));
+            if (array_key_exists($field, $data['data'])) {
+                if ($data['data'][$field] === null) {
+                    continue;
+                }
+                $val = strtoupper(trim((string) $data['data'][$field]));
+                $data['data'][$field] = $val === '' ? null : $val;
             }
         }
 
@@ -104,8 +108,11 @@ class ClientModel extends Model
             'client_name', 'legal_name', 'industry_type', 'email', 'phone',
             'website', 'notes',
         ] as $field) {
-            if (array_key_exists($field, $data['data']) && is_string($data['data'][$field])) {
-                $value = trim($data['data'][$field]);
+            if (array_key_exists($field, $data['data'])) {
+                if ($data['data'][$field] === null) {
+                    continue;
+                }
+                $value = trim((string) $data['data'][$field]);
                 $data['data'][$field] = $value === '' ? null : $value;
             }
         }

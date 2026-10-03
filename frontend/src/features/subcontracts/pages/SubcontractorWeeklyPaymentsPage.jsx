@@ -22,7 +22,7 @@ import { FormField } from '../../../components/composite/FormField';
 import { EntityEditModal } from '../../../components/composite/EntityEditModal';
 import { ConfirmDialog } from '../../../components/composite/ConfirmDialog';
 import { toast } from '../../../components/composite/Toast';
-import { projectsApi, subcontractsApi } from '../../../api/apiservice';
+import { projectsApi, subcontractsApi, dailyWagesApi } from '../../../api/apiservice';
 import { useAuth } from '../../auth/context/AuthContext';
 import { generateAndDownloadA5SlipFromItem, printA5SlipFromItem } from '../utils/a5SlipExportUtils';
 
@@ -234,71 +234,15 @@ export function SubcontractorWeeklyPaymentsPage() {
   const [downloadingSlipId, setDownloadingSlipId] = useState(null);
 
   // Load from LocalStorage & API
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      let currentPayments = [];
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (saved) {
-        currentPayments = JSON.parse(saved);
-      } else {
-        currentPayments = [...INITIAL_SEED_DATA];
-      }
+      const [wagesRes, projRes, contrRes] = await Promise.all([
+        dailyWagesApi.list({ limit: 300 }).catch(() => ({ data: [] })),
+        projectsApi.list().catch(() => ({ data: [] })),
+        subcontractsApi.contractors.list().catch(() => ({ data: [] }))
+      ]);
 
-      // Merge any recorded site daily logs that haven't been added yet
-      try {
-        const globalLogs = JSON.parse(localStorage.getItem('global_subcon_daily_logs') || '[]');
-        if (Array.isArray(globalLogs) && globalLogs.length > 0) {
-          let hasNew = false;
-          globalLogs.forEach(gLog => {
-            const weeklyId = `swp-${gLog.contractor_id}-${gLog.date}`;
-            if (!currentPayments.some(p => p.id === weeklyId || p.id === gLog.id)) {
-              currentPayments.unshift({
-                id: weeklyId,
-                voucher_no: `SWP-CON-${(gLog.date || '').replace(/-/g, '').slice(2)}`,
-                week_number: `Day of ${gLog.date}`,
-                week_start: gLog.date,
-                week_end: gLog.date,
-                project_id: String(gLog.site_id || '1'),
-                project_name: gLog.site_name || 'Site Project',
-                site_id: String(gLog.site_id || 'SITE-01'),
-                site_name: gLog.site_name || 'Site Name',
-                contractor_id: String(gLog.contractor_id),
-                contractor_name: gLog.contractor_name,
-                trade_category: gLog.trade || 'Subcontractor Gang',
-                work_order_no: `WO-${gLog.contractor_id}`,
-                total_mandays: gLog.total_workers || 1,
-                avg_rate_per_day: gLog.total_workers > 0 ? Math.round(gLog.total_cost / gLog.total_workers) : 800,
-                gross_amount: gLog.total_cost || 0,
-                advance_deduction: 0,
-                other_deductions: 0,
-                net_payable: gLog.total_cost || 0,
-                payment_mode: 'RTGS / Bank Transfer',
-                status: 'Pending Approval',
-                prepared_by: gLog.foreman || 'Site Supervisor',
-                notes: gLog.notes || `Daily manpower on ${gLog.date}`,
-                trades: gLog.trades || [],
-              });
-              hasNew = true;
-            }
-          });
-          if (hasNew) {
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(currentPayments));
-          }
-        }
-      } catch {}
-
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(currentPayments));
-      setPayments(currentPayments);
-    } catch {
-      setPayments(INITIAL_SEED_DATA);
-    }
-
-    // Load projects and master subcontractors
-    Promise.all([
-      projectsApi.list().catch(() => ({ data: [] })),
-      subcontractsApi.contractors.list().catch(() => ({ data: [] }))
-    ]).then(([projRes, contrRes]) => {
       const pList = projRes?.data?.projects ?? projRes?.projects ?? (Array.isArray(projRes?.data) ? projRes.data : []);
       if (Array.isArray(pList) && pList.length > 0) {
         setProjects(pList);
@@ -337,7 +281,140 @@ export function SubcontractorWeeklyPaymentsPage() {
           { id: '5', contractor_name: 'Kaveri Shuttering & Formwork', trade: 'Carpentry / Formwork', phone: '+91 98940 33445' },
         ]);
       }
-    }).finally(() => setLoading(false));
+
+      // Convert backend daily wage registers into weekly payment rows
+      const rawRegisters = wagesRes?.data?.registers ?? wagesRes?.data?.daily_wages ?? (Array.isArray(wagesRes?.data) ? wagesRes.data : []);
+      
+      let localSaved = [];
+      try {
+        localSaved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY) || '[]');
+      } catch {}
+
+      const realWeeklyPayments = [];
+      if (Array.isArray(rawRegisters) && rawRegisters.length > 0) {
+        rawRegisters.forEach((reg) => {
+          const regId = String(reg.id);
+          const localMatch = localSaved.find(s => String(s.daily_wage_register_id) === regId || String(s.id) === regId || String(s.id) === `dwr-${regId}` || s.voucher_no === reg.register_no);
+
+          const statusStr = String(reg.status || '').toUpperCase();
+          let finalStatus = 'Pending Approval';
+          if (statusStr === 'PAID') finalStatus = 'Paid';
+          else if (statusStr === 'APPROVED') finalStatus = 'Approved';
+          else if (statusStr === 'CANCELLED') finalStatus = 'Cancelled';
+          else if (localMatch?.status) finalStatus = localMatch.status;
+
+          const totalMandays = Number(reg.total_mandays) || (reg.lines?.reduce((acc, l) => {
+            const cls = (l.classification || '').toLowerCase();
+            return (cls === 'manpower' || !cls) ? acc + (Number(l.quantity) || 0) : acc;
+          }, 0) || 0);
+
+          const grossAmount = Number(reg.total_amount ?? reg.gross_amount) || 0;
+          const advDeduction = Number(localMatch?.advance_deduction) || 0;
+          const otherDeduction = Number(localMatch?.other_deductions) || 0;
+          const netPayable = Math.max(0, grossAmount - advDeduction - otherDeduction);
+          const avgRate = totalMandays > 0 ? Math.round(grossAmount / totalMandays) : (grossAmount > 0 ? grossAmount : 800);
+
+          const lines = Array.isArray(reg.lines) ? reg.lines : [];
+          const trades = lines.map(l => ({
+            item: l.description,
+            classification: l.classification || 'Manpower',
+            rate: Number(l.rate) || 0,
+            qty: Number(l.quantity) || 0,
+            amount: Number(l.amount) || 0,
+            uom: l.uom || 'Nos'
+          }));
+
+          realWeeklyPayments.push({
+            id: `dwr-${reg.id}`,
+            daily_wage_register_id: reg.id,
+            is_real_db: true,
+            voucher_no: reg.register_no || reg.voucher_no || `DWR-${String(reg.id).padStart(5, '0')}`,
+            week_number: reg.wage_date ? `Day of ${reg.wage_date}` : 'Weekly Register',
+            week_start: reg.wage_date || reg.week_start || '',
+            week_end: reg.wage_date || reg.week_end || '',
+            project_id: String(reg.project_id || (pList[0]?.id || '1')),
+            project_name: reg.project_name || pList.find(p => String(p.id) === String(reg.project_id))?.project_name || 'Site Project',
+            site_id: String(reg.site_id || 'SITE-01'),
+            site_name: reg.site_name || 'Site Name',
+            contractor_id: String(reg.subcontractor_id || reg.contractor_id || ''),
+            contractor_name: reg.subcontractor_name || reg.contractor_name || 'Subcontractor',
+            trade_category: reg.contractor_type_name || reg.trade_category || 'Labour Gang',
+            work_order_no: reg.contractor_code ? `WO-${reg.contractor_code}` : `WO-${reg.subcontractor_id || reg.id}`,
+            total_mandays: totalMandays,
+            avg_rate_per_day: avgRate,
+            gross_amount: grossAmount,
+            advance_deduction: advDeduction,
+            other_deductions: otherDeduction,
+            net_payable: netPayable,
+            payment_mode: localMatch?.payment_mode || 'RTGS / Bank Transfer',
+            bank_account: localMatch?.bank_account || 'HDFC Bank - Current A/C (*4910)',
+            reference_no: localMatch?.reference_no || '',
+            payment_date: localMatch?.payment_date || (statusStr === 'PAID' ? reg.wage_date : ''),
+            status: finalStatus,
+            prepared_by: reg.created_by_name || 'Site Accounts',
+            approved_by: statusStr === 'APPROVED' || statusStr === 'PAID' ? 'Project Manager' : (localMatch?.approved_by || ''),
+            notes: reg.global_remarks || reg.notes || `Daily wage register for ${reg.wage_date}`,
+            lines: lines,
+            trades: trades
+          });
+        });
+      }
+
+      // Also merge any offline site daily logs from localStorage if any
+      try {
+        const globalLogs = JSON.parse(localStorage.getItem('global_subcon_daily_logs') || '[]');
+        if (Array.isArray(globalLogs) && globalLogs.length > 0) {
+          globalLogs.forEach(gLog => {
+            const weeklyId = `swp-${gLog.contractor_id}-${gLog.date}`;
+            if (!realWeeklyPayments.some(p => p.id === weeklyId || String(p.daily_wage_register_id) === String(gLog.id))) {
+              realWeeklyPayments.push({
+                id: weeklyId,
+                voucher_no: `SWP-CON-${(gLog.date || '').replace(/-/g, '').slice(2)}`,
+                week_number: `Day of ${gLog.date}`,
+                week_start: gLog.date,
+                week_end: gLog.date,
+                project_id: String(gLog.site_id || '1'),
+                project_name: gLog.site_name || 'Site Project',
+                site_id: String(gLog.site_id || 'SITE-01'),
+                site_name: gLog.site_name || 'Site Name',
+                contractor_id: String(gLog.contractor_id),
+                contractor_name: gLog.contractor_name,
+                trade_category: gLog.trade || 'Subcontractor Gang',
+                work_order_no: `WO-${gLog.contractor_id}`,
+                total_mandays: gLog.total_workers || 1,
+                avg_rate_per_day: gLog.total_workers > 0 ? Math.round(gLog.total_cost / gLog.total_workers) : 800,
+                gross_amount: gLog.total_cost || 0,
+                advance_deduction: 0,
+                other_deductions: 0,
+                net_payable: gLog.total_cost || 0,
+                payment_mode: 'RTGS / Bank Transfer',
+                status: 'Pending Approval',
+                prepared_by: gLog.foreman || 'Site Supervisor',
+                notes: gLog.notes || `Daily manpower on ${gLog.date}`,
+                trades: gLog.trades || [],
+              });
+            }
+          });
+        }
+      } catch {}
+
+      // Keep user-created custom manual payments that are not from db registers
+      const customLocalPayments = localSaved.filter(p => !p.daily_wage_register_id && !p.is_real_db && !realWeeklyPayments.some(r => r.id === p.id || r.voucher_no === p.voucher_no));
+
+      let finalCombined = [...realWeeklyPayments, ...customLocalPayments];
+
+      // If user had no real logs and no custom payments at all, fallback to initial seed
+      if (finalCombined.length === 0) {
+        finalCombined = [...INITIAL_SEED_DATA];
+      }
+
+      setPayments(finalCombined);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(finalCombined));
+    } catch (err) {
+      console.error('Error loading weekly payments:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -502,15 +579,23 @@ export function SubcontractorWeeklyPaymentsPage() {
   };
 
   // Auto-fill from Logged Daily Wages
-  const handleAutoFillFromDailyWages = () => {
+  const handleAutoFillFromDailyWages = async () => {
     if (!form.contractor_id) {
       toast.error('Please select a subcontractor first.');
       return;
     }
 
     try {
-      const dailyWages = JSON.parse(localStorage.getItem('mock_daily_wages') || '[]');
-      const matched = dailyWages.filter(w => String(w.subcontractor_id) === String(form.contractor_id));
+      const res = await dailyWagesApi.list({ subcontractor_id: form.contractor_id }).catch(() => null);
+      const dbWages = res?.data?.registers ?? res?.data?.daily_wages ?? (Array.isArray(res?.data) ? res.data : []);
+
+      let matched = [];
+      if (Array.isArray(dbWages) && dbWages.length > 0) {
+        matched = dbWages;
+      } else {
+        const dailyWages = JSON.parse(localStorage.getItem('mock_daily_wages') || '[]');
+        matched = dailyWages.filter(w => String(w.subcontractor_id) === String(form.contractor_id));
+      }
 
       if (matched.length === 0) {
         toast.info('No daily wages logged for this subcontractor yet. You can manually enter shifts and rate.');
@@ -521,7 +606,20 @@ export function SubcontractorWeeklyPaymentsPage() {
       let totalWageAmount = 0;
 
       matched.forEach(w => {
-        if (w.entries) {
+        if (w.lines && Array.isArray(w.lines) && w.lines.length > 0) {
+          w.lines.forEach(l => {
+            const shift = Number(l.quantity) || 0;
+            const rate = Number(l.rate) || 0;
+            const cls = (l.classification || '').toLowerCase();
+            if (cls === 'manpower' || !cls) {
+              totalDays += shift;
+            }
+            totalWageAmount += Number(l.amount) || (shift * rate);
+          });
+        } else if (w.total_mandays !== undefined || w.total_amount !== undefined) {
+          totalDays += Number(w.total_mandays) || 0;
+          totalWageAmount += Number(w.total_amount) || 0;
+        } else if (w.entries) {
           Object.keys(w.entries).forEach(id => {
             const shift = Number(w.entries[id]) || 0;
             const rate = Number(w.rates?.[id]) || 850;
@@ -531,8 +629,8 @@ export function SubcontractorWeeklyPaymentsPage() {
         }
       });
 
-      if (totalDays > 0) {
-        const avgRate = Math.round(totalWageAmount / totalDays);
+      if (totalDays > 0 || totalWageAmount > 0) {
+        const avgRate = totalDays > 0 ? Math.round(totalWageAmount / totalDays) : 850;
         setForm(prev => {
           const gross = totalWageAmount;
           const adv = Number(prev.advance_deduction) || 0;
@@ -546,7 +644,7 @@ export function SubcontractorWeeklyPaymentsPage() {
             notes: (prev.notes ? prev.notes + ' ' : '') + `(Auto-synced ${matched.length} daily wage logs)`
           };
         });
-        toast.success(`Synced ${totalDays} shifts from ${matched.length} daily wage logs.`);
+        toast.success(`Synced ${totalDays} shifts (₹${totalWageAmount.toLocaleString('en-IN')}) from ${matched.length} daily wage logs.`);
       } else {
         toast.info('Found daily wage entries, but shifts were 0.');
       }
@@ -617,7 +715,13 @@ export function SubcontractorWeeklyPaymentsPage() {
     }, 300);
   };
 
-  const handleApprove = (item) => {
+  const handleApprove = async (item) => {
+    try {
+      if (item.daily_wage_register_id) {
+        await dailyWagesApi.approve(item.daily_wage_register_id).catch(() => {});
+      }
+    } catch {}
+
     const updated = payments.map(p => {
       if (p.id === item.id) {
         return {
@@ -656,11 +760,22 @@ export function SubcontractorWeeklyPaymentsPage() {
     });
   };
 
-  const handleConfirmDisburse = () => {
+  const handleConfirmDisburse = async () => {
     if (!disburseForm.reference_no) {
       toast.error('Payment reference / UTR number is required.');
       return;
     }
+
+    try {
+      if (disburseItem.daily_wage_register_id) {
+        await dailyWagesApi.pay(disburseItem.daily_wage_register_id, {
+          payment_mode: disburseForm.payment_mode,
+          reference_no: disburseForm.reference_no,
+          payment_date: disburseForm.payment_date,
+          bank_account: disburseForm.bank_account
+        }).catch(() => {});
+      }
+    } catch {}
 
     const updated = payments.map(p => {
       if (p.id === disburseItem.id) {
@@ -703,8 +818,13 @@ export function SubcontractorWeeklyPaymentsPage() {
     setDisburseItem(null);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteItem) return;
+    try {
+      if (deleteItem.daily_wage_register_id) {
+        await dailyWagesApi.cancel(deleteItem.daily_wage_register_id).catch(() => {});
+      }
+    } catch {}
     const updated = payments.filter(p => p.id !== deleteItem.id);
     savePaymentsList(updated);
     toast.success('Weekly payment record removed.');

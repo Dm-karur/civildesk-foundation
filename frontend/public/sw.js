@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ks-construction-cache-v1';
+const CACHE_NAME = 'ks-construction-cache-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -64,8 +64,13 @@ self.addEventListener('fetch', (event) => {
   // HTML navigation (SPA routes like /login, /dashboard, etc.)
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => {
-        return caches.match('/index.html') || caches.match('/');
+      fetch(request).catch(async () => {
+        const cached = (await caches.match('/index.html')) || (await caches.match('/'));
+        if (cached) return cached;
+        return new Response('Network error occurred. Please refresh.', {
+          status: 503,
+          headers: { 'Content-Type': 'text/plain' },
+        });
       })
     );
     return;

@@ -113,9 +113,44 @@ class ClientsController extends BaseController
         }
 
         $data = $this->writableData($input);
-        $data['company_id'] = (int) $user->company_id;
+        $companyId = (int) $user->company_id;
+        $data['company_id'] = $companyId;
         $data['created_by'] = (int) $user->id;
         $data['updated_by'] = (int) $user->id;
+
+        $db = db_connect();
+
+        // Auto-generate client_code if empty
+        if (empty($data['client_code'])) {
+            $data['client_code'] = $this->generateClientCode($companyId);
+        }
+
+        // Default master foreign keys if not provided
+        if (empty($data['client_type_id'])) {
+            $typeRow = $db->table('company_types')->where('is_active', 1)->orderBy('id', 'ASC')->get(1)->getRowArray();
+            $data['client_type_id'] = $typeRow ? (int) $typeRow['id'] : null;
+        }
+        if (empty($data['gst_registration_type_id'])) {
+            $gstRow = $db->table('gst_registration_types')->where('is_active', 1)->orderBy('id', 'ASC')->get(1)->getRowArray();
+            $data['gst_registration_type_id'] = $gstRow ? (int) $gstRow['id'] : null;
+        }
+        if (empty($data['client_source_id'])) {
+            $sourceRow = $db->table('client_sources')->where('is_active', 1)->orderBy('id', 'ASC')->get(1)->getRowArray();
+            $data['client_source_id'] = $sourceRow ? (int) $sourceRow['id'] : null;
+        }
+        if (empty($data['client_status_id'])) {
+            $statusRow = $db->table('client_statuses')->where('status_code', 'ACTIVE')->where('is_active', 1)->get(1)->getRowArray()
+                ?? $db->table('client_statuses')->where('is_active', 1)->orderBy('id', 'ASC')->get(1)->getRowArray();
+            $data['client_status_id'] = $statusRow ? (int) $statusRow['id'] : null;
+        }
+
+        // Normalize empty string fields to null
+        foreach (['gstin', 'pan', 'tan', 'email', 'phone', 'website', 'legal_name', 'industry_type', 'notes'] as $field) {
+            if (isset($data[$field]) && trim((string) $data[$field]) === '') {
+                $data[$field] = null;
+            }
+        }
+
         $data += [
             'branch_id' => null,
             'billing_currency' => 'INR',
@@ -172,6 +207,13 @@ class ClientsController extends BaseController
         $data = $this->writableData($input);
         unset($data['company_id'], $data['created_by']);
         $data['updated_by'] = (int) $user->id;
+
+        foreach (['gstin', 'pan', 'tan', 'email', 'phone', 'website', 'legal_name', 'industry_type', 'notes'] as $field) {
+            if (array_key_exists($field, $data) && trim((string) $data[$field]) === '') {
+                $data[$field] = null;
+            }
+        }
+
         $merged = array_merge($existing, $data);
 
         $validation = $this->validateReferences($merged, $user);
@@ -240,10 +282,10 @@ class ClientsController extends BaseController
                 'client_statuses.status_name AS client_status_name',
             ])
             ->join('branches', 'branches.id = clients.branch_id', 'left')
-            ->join('company_types', 'company_types.id = clients.client_type_id')
-            ->join('gst_registration_types', 'gst_registration_types.id = clients.gst_registration_type_id')
-            ->join('client_sources', 'client_sources.id = clients.client_source_id')
-            ->join('client_statuses', 'client_statuses.id = clients.client_status_id');
+            ->join('company_types', 'company_types.id = clients.client_type_id', 'left')
+            ->join('gst_registration_types', 'gst_registration_types.id = clients.gst_registration_type_id', 'left')
+            ->join('client_sources', 'client_sources.id = clients.client_source_id', 'left')
+            ->join('client_statuses', 'client_statuses.id = clients.client_status_id', 'left');
     }
 
     private function writableData(array $input): array
@@ -256,6 +298,18 @@ class ClientsController extends BaseController
             'tax_deduction_applicable', 'client_source_id',
             'client_status_id', 'notes',
         ]));
+    }
+
+    private function generateClientCode(int $companyId): string
+    {
+        $db = db_connect();
+        $count = $db->table('clients')->where('company_id', $companyId)->countAllResults() + 1;
+        $code = 'CLI-' . date('Y') . '-' . str_pad((string) $count, 3, '0', STR_PAD_LEFT);
+        while ($db->table('clients')->where('company_id', $companyId)->where('client_code', $code)->countAllResults() > 0) {
+            $count++;
+            $code = 'CLI-' . date('Y') . '-' . str_pad((string) $count, 3, '0', STR_PAD_LEFT);
+        }
+        return $code;
     }
 
     private function validateReferences(array $data, object $user): ?ResponseInterface
@@ -284,10 +338,12 @@ class ClientsController extends BaseController
             'client_status_id' => ['client_statuses', 'Client status'],
         ];
         foreach ($masters as $field => [$table, $label]) {
-            $value = (int) ($data[$field] ?? 0);
-            if ($value <= 0 || $db->table($table)->where('id', $value)
-                ->where('is_active', 1)->countAllResults() === 0) {
-                $errors[$field] = "The selected {$label} is invalid.";
+            if (! empty($data[$field])) {
+                $value = (int) $data[$field];
+                if ($value > 0 && $db->table($table)->where('id', $value)
+                    ->where('is_active', 1)->countAllResults() === 0) {
+                    $errors[$field] = "The selected {$label} is invalid.";
+                }
             }
         }
 

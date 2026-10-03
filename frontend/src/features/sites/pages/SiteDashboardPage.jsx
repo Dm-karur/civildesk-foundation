@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   FileSpreadsheet,
   Users,
+  HardHat,
   CalendarCheck,
   ClipboardList,
   Boxes,
@@ -20,12 +21,14 @@ import { Button } from '../../../components/ui/Button';
 import { Badge } from '../../../components/ui/Badge';
 import { toast } from '../../../components/composite/Toast';
 import { sitesApi } from '../../../api/apiservice';
+import { useModules } from '../../settings/context/ModulesContext';
 
 // Tab Components
 import { SiteDashboardHeader } from '../components/site-dashboard/SiteDashboardHeader';
 import { SiteOverviewTab } from '../components/site-dashboard/SiteOverviewTab';
 import { SiteBoqTab } from '../components/site-dashboard/SiteBoqTab';
 import { SiteLabourTab } from '../components/site-dashboard/SiteLabourTab';
+import { SiteSubWorkTab } from '../components/site-dashboard/SiteSubWorkTab';
 import { SiteAttendanceTab } from '../components/site-dashboard/SiteAttendanceTab';
 import { SiteDailyReportsTab } from '../components/site-dashboard/SiteDailyReportsTab';
 import { SiteMaterialsTab } from '../components/site-dashboard/SiteMaterialsTab';
@@ -35,26 +38,38 @@ import { SiteDocumentsTab } from '../components/site-dashboard/SiteDocumentsTab'
 import { SiteIssuesTab } from '../components/site-dashboard/SiteIssuesTab';
 import { SiteReportsTab } from '../components/site-dashboard/SiteReportsTab';
 
-const TABS = [
+const ALL_SITE_TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'boq', label: 'BOQ & Budget', icon: FileSpreadsheet },
-  { id: 'labour', label: 'Labour', icon: Users },
-  { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
-  { id: 'daily-reports', label: 'Daily Site Reports', icon: ClipboardList },
-  { id: 'materials', label: 'Materials', icon: Boxes },
-  { id: 'expenses', label: 'Expenses', icon: Wallet },
-  { id: 'photos', label: 'Photos', icon: Camera },
-  { id: 'documents', label: 'Documents', icon: FolderLock },
-  { id: 'issues', label: 'Issues', icon: AlertTriangle },
-  { id: 'reports', label: 'Reports', icon: FileText },
+  { id: 'boq', label: 'BOQ & Budget', icon: FileSpreadsheet, module: 'BOQ_BUDGET' },
+  { id: 'labour', label: 'Labour Entry', icon: Users, module: 'LABOUR_ATTENDANCE' },
+  { id: 'attendance', label: 'Attendance', icon: CalendarCheck, module: 'LABOUR_ATTENDANCE' },
+  { id: 'sub-work', label: 'Sub Work', icon: HardHat, module: 'SUBCONTRACT_MANAGEMENT' },
+  { id: 'daily-reports', label: 'Daily Site Reports', icon: ClipboardList, module: 'DAILY_SITE_OPERATIONS' },
+  { id: 'materials', label: 'Materials', icon: Boxes, module: 'MATERIALS_INVENTORY' },
+  { id: 'expenses', label: 'Expenses', icon: Wallet, module: 'FINANCE_COST_CONTROL' },
+  { id: 'photos', label: 'Photos', icon: Camera, module: 'DAILY_SITE_OPERATIONS' },
+  { id: 'documents', label: 'Documents', icon: FolderLock, module: 'SITES_LOCATIONS' },
+  { id: 'issues', label: 'Issues', icon: AlertTriangle, module: 'DAILY_SITE_OPERATIONS' },
+  { id: 'reports', label: 'Reports', icon: FileText, module: 'REPORTS_ANALYTICS' },
 ];
 
 export function SiteDashboardPage() {
+  const { isModuleEnabled } = useModules();
   const { siteId, tab: routeTab } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState(routeTab || searchParams.get('tab') || 'overview');
+  // Dynamically filter tabs based on enabled company modules
+  const TABS = ALL_SITE_TABS.filter((tab) => {
+    if (!tab.module) return true;
+    return isModuleEnabled(tab.module);
+  });
+
+  const [activeTab, setActiveTab] = useState(() => {
+    const requested = routeTab || searchParams.get('tab') || 'overview';
+    const isValid = TABS.some((t) => t.id === requested);
+    return isValid ? requested : 'overview';
+  });
   const [site, setSite] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -62,11 +77,23 @@ export function SiteDashboardPage() {
   // Quick Action Modal Triggers
   const [quickAction, setQuickAction] = useState(null);
 
+  // Redirect to overview if current tab's module is disabled
+  useEffect(() => {
+    if (TABS.length > 0 && !TABS.some((t) => t.id === activeTab)) {
+      setActiveTab('overview');
+      navigate(`/sites/${siteId}/overview`, { replace: true });
+    }
+  }, [TABS, activeTab, navigate, siteId]);
+
   useEffect(() => {
     if (routeTab && routeTab !== activeTab) {
-      setActiveTab(routeTab);
+      if (TABS.some((t) => t.id === routeTab)) {
+        setActiveTab(routeTab);
+      } else {
+        navigate(`/sites/${siteId}/overview`, { replace: true });
+      }
     }
-  }, [routeTab]);
+  }, [routeTab, TABS, activeTab, navigate, siteId]);
 
   useEffect(() => {
     if (!siteId) return;
@@ -246,6 +273,10 @@ export function SiteDashboardPage() {
 
           {activeTab === 'attendance' && (
             <SiteAttendanceTab site={site} />
+          )}
+
+          {activeTab === 'sub-work' && (
+            <SiteSubWorkTab site={site} />
           )}
 
           {activeTab === 'daily-reports' && (

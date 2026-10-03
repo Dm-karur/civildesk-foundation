@@ -2,7 +2,8 @@ param(
     [switch]$TestConnection,
     [switch]$Deploy,
     [switch]$DeployFrontend,
-    [switch]$DeployBackend
+    [switch]$DeployBackend,
+    [switch]$RunSql
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,7 +48,7 @@ try {
     exit 1
 }
 
-if ($TestConnection -or (-not $Deploy -and -not $DeployFrontend -and -not $DeployBackend)) {
+if ($TestConnection -or (-not $Deploy -and -not $DeployFrontend -and -not $DeployBackend -and -not $RunSql)) {
     Write-Host ""
     Write-Host "[INFO] Safe Mode: Connection verified. Deployment was NOT executed." -ForegroundColor Yellow
     Write-Host "Remote public_html path: $RemotePublicHtml" -ForegroundColor Gray
@@ -70,13 +71,18 @@ if ($Deploy -or $DeployFrontend) {
     Get-ChildItem -Path "dist" -Force | Compress-Archive -DestinationPath $DistZip -Force
     Pop-Location
 
-    Write-Host "Uploading dist.zip via SCP..." -ForegroundColor Cyan
-    scp -P $Port -o StrictHostKeyChecking=no $DistZip "$User@${HostName}:${RemotePublicHtml}/dist.zip"
+    $frontendDests = @(
+        $RemotePublicHtml
+    )
 
-    Write-Host "Extracting dist.zip on remote server..." -ForegroundColor Cyan
-    Execute-RemoteCommand "cd $RemotePublicHtml && unzip -o dist.zip && rm dist.zip"
+    foreach ($fdest in $frontendDests) {
+        Write-Host "Uploading dist.zip to $fdest..." -ForegroundColor Cyan
+        scp -P $Port -o StrictHostKeyChecking=no $DistZip "$User@${HostName}:${fdest}/dist.zip"
+        Write-Host "Extracting dist.zip in $fdest..." -ForegroundColor Cyan
+        Execute-RemoteCommand "cd $fdest && unzip -o dist.zip && rm dist.zip"
+    }
 
-    Write-Host "[SUCCESS] Frontend deployed successfully!" -ForegroundColor Green
+    Write-Host "[SUCCESS] Frontend deployed to $RemotePublicHtml successfully!" -ForegroundColor Green
 }
 
 if ($Deploy -or $DeployBackend) {
@@ -86,18 +92,53 @@ if ($Deploy -or $DeployBackend) {
     Write-Host "=========================================" -ForegroundColor Cyan
 
     $BackendController = Join-Path $WorkspaceRoot "backend\app\Controllers\Api\SubcontractMastersController.php"
+    $DailyWagesRegisterController = Join-Path $WorkspaceRoot "backend\app\Controllers\Api\DailyWagesRegisterController.php"
+    $NavigationController = Join-Path $WorkspaceRoot "backend\app\Controllers\Api\NavigationController.php"
+    $ClientsController = Join-Path $WorkspaceRoot "backend\app\Controllers\Api\ClientsController.php"
+    $ClientModel = Join-Path $WorkspaceRoot "backend\app\Models\ClientModel.php"
     $BackendRoutes = Join-Path $WorkspaceRoot "backend\app\Config\Routes.php"
 
-    Write-Host "Uploading SubcontractMastersController.php..." -ForegroundColor Cyan
-    scp -P $Port -o StrictHostKeyChecking=no $BackendController "$User@${HostName}:${RemotePublicHtml}/backend/app/Controllers/Api/SubcontractMastersController.php"
+    $destinations = @(
+        $RemotePublicHtml
+    )
 
-    Write-Host "Uploading Routes.php..." -ForegroundColor Cyan
-    scp -P $Port -o StrictHostKeyChecking=no $BackendRoutes "$User@${HostName}:${RemotePublicHtml}/backend/app/Config/Routes.php"
+    foreach ($dest in $destinations) {
+        Write-Host "Uploading controllers, models, and routes to $dest..." -ForegroundColor Cyan
+        scp -P $Port -o StrictHostKeyChecking=no $BackendController "$User@${HostName}:${dest}/backend/app/Controllers/Api/SubcontractMastersController.php"
+        scp -P $Port -o StrictHostKeyChecking=no $DailyWagesRegisterController "$User@${HostName}:${dest}/backend/app/Controllers/Api/DailyWagesRegisterController.php"
+        scp -P $Port -o StrictHostKeyChecking=no $NavigationController "$User@${HostName}:${dest}/backend/app/Controllers/Api/NavigationController.php"
+        scp -P $Port -o StrictHostKeyChecking=no $ClientsController "$User@${HostName}:${dest}/backend/app/Controllers/Api/ClientsController.php"
+        scp -P $Port -o StrictHostKeyChecking=no $ClientModel "$User@${HostName}:${dest}/backend/app/Models/ClientModel.php"
+        scp -P $Port -o StrictHostKeyChecking=no $BackendRoutes "$User@${HostName}:${dest}/backend/app/Config/Routes.php"
+    }
 
     Write-Host "[SUCCESS] Backend controllers and routes deployed successfully!" -ForegroundColor Green
+}
+
+if ($Deploy -or $RunSql) {
+    Write-Host ""
+    Write-Host "=========================================" -ForegroundColor Cyan
+    Write-Host " Running Database SQL Migrations" -ForegroundColor Cyan
+    Write-Host "=========================================" -ForegroundColor Cyan
+
+    $SqlFile = Join-Path $WorkspaceRoot "sub_work_schema.sql"
+    if (Test-Path $SqlFile) {
+        Write-Host "Uploading sub_work_schema.sql..." -ForegroundColor Cyan
+        scp -P $Port -o StrictHostKeyChecking=no $SqlFile "$User@${HostName}:sub_work_schema.sql"
+
+        Write-Host "Executing SQL schema on remote database..." -ForegroundColor Cyan
+        $DbUser = "u589483802_CDfoundation"
+        $DbPass = "CDfoundation@123"
+        $DbName = "u589483802_CDfoundation"
+        $SqlCmd = "mysql -u $DbUser -p'$DbPass' $DbName < sub_work_schema.sql"
+        $SqlResult = Execute-RemoteCommand "$SqlCmd && rm -f sub_work_schema.sql && echo 'SQL Execution Completed Successfully!'"
+        Write-Host $SqlResult
+        Write-Host "[SUCCESS] Sub Work SQL schema migrated successfully!" -ForegroundColor Green
+    }
 }
 
 Write-Host ""
 Write-Host "=========================================" -ForegroundColor Green
 Write-Host " Deployment Completed Successfully! " -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Green
+

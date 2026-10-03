@@ -10,7 +10,7 @@ import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { toast } from '../../../components/composite/Toast';
-import { projectsApi, subcontractsApi } from '../../../api/apiservice';
+import { projectsApi, subcontractsApi, dailyWagesApi } from '../../../api/apiservice';
 import { generateAndDownloadA5SlipFromItem, printA5SlipFromItem } from '../utils/a5SlipExportUtils';
 
 const LOCAL_SLIPS_KEY = 'mock_maistry_slips';
@@ -129,25 +129,86 @@ export function MaistrySlipPage() {
   const loadSlipIntoForm = (slip) => {
     if (!slip) return;
     if (slip.site_id) setSelectedSiteId(String(slip.site_id));
-    if (slip.maistry_id || slip.contractor_id) setSelectedMaistryId(String(slip.maistry_id || slip.contractor_id));
-    if (slip.start_date || slip.week_start) setStartDate(slip.start_date || slip.week_start);
-    if (slip.end_date || slip.week_end) setEndDate(slip.end_date || slip.week_end);
-    if (slip.ref_no || slip.voucher_no) setRefNo(slip.ref_no || slip.voucher_no);
+    if (slip.maistry_id || slip.contractor_id || slip.subcontractor_id) {
+      setSelectedMaistryId(String(slip.maistry_id || slip.contractor_id || slip.subcontractor_id));
+    }
+    const slipStart = slip.start_date || slip.week_start || slip.wage_date;
+    const slipEnd = slip.end_date || slip.week_end || slip.wage_date;
+    if (slipStart) {
+      const mon = getMondayOfWeek(slipStart);
+      const sun = getSundayOfWeek(mon);
+      setStartDate(mon);
+      setEndDate(sun);
+    } else if (slipEnd) {
+      setEndDate(slipEnd);
+    }
+    if (slip.ref_no || slip.voucher_no || slip.register_no) {
+      setRefNo(slip.ref_no || slip.voucher_no || slip.register_no);
+    }
+
     if (slip.categories && Array.isArray(slip.categories)) {
       setCategories(slip.categories);
+    } else if (slip.lines && Array.isArray(slip.lines) && slip.lines.length > 0) {
+      const mon = getMondayOfWeek(slipStart || new Date());
+      let dayIdx = 4;
+      if (slipStart && mon) {
+        const d1 = new Date(slipStart);
+        const d0 = new Date(mon);
+        const diff = Math.round((d1 - d0) / 86400000);
+        if (diff >= 0 && diff < 7) dayIdx = diff;
+      }
+
+      const labour = [];
+      const equip = [];
+      const expense = [];
+
+      slip.lines.forEach((l, idx) => {
+        const days = ['', '', '', '', '', '', ''];
+        days[dayIdx] = String(l.quantity || '');
+        const itemObj = {
+          id: `line-${l.id || idx}`,
+          description: l.description,
+          rate: Number(l.rate) || 0,
+          days
+        };
+        const cls = String(l.classification || '').toLowerCase();
+        if (cls === 'equipment') equip.push(itemObj);
+        else if (cls === 'expense') expense.push(itemObj);
+        else labour.push(itemObj);
+      });
+
+      setCategories([
+        { category: 'LABOUR / MANPOWER', items: labour.length > 0 ? labour : DEFAULT_ROWS[0].items },
+        { category: 'EQUIPMENT / RENTALS', items: equip.length > 0 ? equip : DEFAULT_ROWS[1].items },
+        { category: 'EXPENSES & CHARGES', items: expense.length > 0 ? expense : DEFAULT_ROWS[2].items }
+      ]);
     } else if (slip.trades && Array.isArray(slip.trades)) {
-      const labour = slip.trades.map((t, idx) => ({
-        id: `synced-${idx}`,
-        description: t.item || 'Labour',
-        rate: Number(t.rate) || 800,
-        days: ['', '', '', '', String(t.qty || ''), '', '']
-      }));
+      const mon = getMondayOfWeek(slipStart || new Date());
+      let dayIdx = 4;
+      if (slipStart && mon) {
+        const d1 = new Date(slipStart);
+        const d0 = new Date(mon);
+        const diff = Math.round((d1 - d0) / 86400000);
+        if (diff >= 0 && diff < 7) dayIdx = diff;
+      }
+
+      const labour = slip.trades.map((t, idx) => {
+        const days = ['', '', '', '', '', '', ''];
+        days[dayIdx] = String(t.qty || '');
+        return {
+          id: `synced-${idx}`,
+          description: t.item || 'Labour',
+          rate: Number(t.rate) || 800,
+          days
+        };
+      });
       setCategories([
         { category: 'LABOUR / MANPOWER', items: labour.length > 0 ? labour : DEFAULT_ROWS[0].items },
         { category: 'EQUIPMENT / RENTALS', items: DEFAULT_ROWS[1].items },
         { category: 'EXPENSES & CHARGES', items: DEFAULT_ROWS[2].items }
       ]);
     }
+
     if (slip.enable_maistry_pct !== undefined) setEnableMaistryPct(Boolean(slip.enable_maistry_pct));
     if (slip.maistry_pct_value !== undefined) setMaistryPctValue(slip.maistry_pct_value);
     if (slip.round_off !== undefined) setRoundOff(Boolean(slip.round_off));
@@ -167,12 +228,50 @@ export function MaistrySlipPage() {
         }
         if (found) {
           loadSlipIntoForm(found);
+        } else {
+          const cleanId = String(editId).replace(/^dwr-/, '');
+          if (/^\d+$/.test(cleanId)) {
+            dailyWagesApi.get(cleanId).then(res => {
+              const reg = res?.data?.daily_wage;
+              if (reg) {
+                loadSlipIntoForm({
+                  ...reg,
+                  id: `dwr-${reg.id}`,
+                  voucher_no: reg.register_no || `DWR-${reg.id}`,
+                  ref_no: reg.register_no || `DWR-${reg.id}`,
+                  week_start: reg.wage_date,
+                  week_end: reg.wage_date,
+                  site_id: String(reg.site_id),
+                  contractor_id: String(reg.subcontractor_id),
+                  lines: reg.lines || []
+                });
+              }
+            }).catch(() => {});
+          }
         }
+      } else if (paramContractorId && paramDate) {
+        dailyWagesApi.list({ subcontractor_id: paramContractorId, date: paramDate }).then(res => {
+          const regs = res?.data?.registers ?? res?.data?.daily_wages ?? (Array.isArray(res?.data) ? res.data : []);
+          if (regs.length > 0) {
+            const reg = regs[0];
+            loadSlipIntoForm({
+              ...reg,
+              id: `dwr-${reg.id}`,
+              voucher_no: reg.register_no || `DWR-${reg.id}`,
+              ref_no: reg.register_no || `DWR-${reg.id}`,
+              week_start: reg.wage_date,
+              week_end: reg.wage_date,
+              site_id: String(reg.site_id),
+              contractor_id: String(reg.subcontractor_id),
+              lines: reg.lines || []
+            });
+          }
+        }).catch(() => {});
       }
     } catch {
       setSavedSlips([]);
     }
-  }, [editId]);
+  }, [editId, paramContractorId, paramDate]);
 
   // Set initial query params if present
   useEffect(() => {
@@ -417,12 +516,37 @@ export function MaistrySlipPage() {
   }, [categories, enableMaistryPct, maistryPctValue, roundOff]);
 
   // Reload Logs from DB and Site Labour Store
-  const handleReloadLogs = (targetConId = null, targetStart = null) => {
+  const handleReloadLogs = async (targetConId = null, targetStart = null) => {
     const conId = targetConId || selectedMaistryId;
     if (!conId) return;
 
     try {
       let candidateLogs = [];
+
+      // Query real database daily wage registers
+      try {
+        const dbRes = await dailyWagesApi.list({ subcontractor_id: conId }).catch(() => null);
+        const dbRegs = dbRes?.data?.registers ?? dbRes?.data?.daily_wages ?? (Array.isArray(dbRes?.data) ? dbRes.data : []);
+        if (Array.isArray(dbRegs) && dbRegs.length > 0) {
+          dbRegs.forEach(reg => {
+            candidateLogs.push({
+              id: `db-dwr-${reg.id}`,
+              date: reg.wage_date,
+              contractor_id: String(reg.subcontractor_id),
+              contractor_name: reg.subcontractor_name || reg.contractor_name,
+              total_workers: Number(reg.total_mandays) || 1,
+              total_cost: Number(reg.total_amount) || 0,
+              trades: (reg.lines || []).map(l => ({
+                item: l.description,
+                rate: Number(l.rate),
+                qty: Number(l.quantity),
+                amount: Number(l.amount),
+                classification: l.classification
+              }))
+            });
+          });
+        }
+      } catch {}
 
       // Global store
       const globalLogs = JSON.parse(localStorage.getItem('global_subcon_daily_logs') || '[]');

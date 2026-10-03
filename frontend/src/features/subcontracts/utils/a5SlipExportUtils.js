@@ -38,10 +38,10 @@ const buildA5SlipHtml = (item) => {
   const contractorName = item.contractor_name || savedSlip?.maistry_name || 'Subcontractor';
   const siteName = item.site_name || savedSlip?.site_name || item.project_name || 'Site';
   const clientName = item.client_name || savedSlip?.client_name || 'KS Construction Client';
-  const tradeType = item.trade_category || savedSlip?.trade || 'MAISTRY';
+  const tradeType = item.trade_category || item.trade || item.sub_work_title || savedSlip?.trade || 'MAISTRY';
   const weekStart = item.week_start || savedSlip?.start_date || '';
   const weekEnd = item.week_end || savedSlip?.end_date || '';
-  const dateStr = item.payment_date || weekEnd || savedSlip?.end_date || new Date().toISOString().split('T')[0];
+  const dateStr = item.payment_date || weekEnd || savedSlip?.end_date || item.date || new Date().toISOString().split('T')[0];
 
   // Calculate 7-day columns
   const dateLabels = [];
@@ -60,7 +60,7 @@ const buildA5SlipHtml = (item) => {
 
   let rowCounter = 1;
   let categoriesHtml = '';
-  let grandTotal = Number(item.grand_total ?? (savedSlip?.grand_total ?? (item.net_payable || item.gross_amount || 0)));
+  let grandTotal = Number(item.grand_total ?? (savedSlip?.grand_total ?? (item.net_payable || item.gross_amount || item.total_cost || 0)));
 
   const activeCategories = (Array.isArray(item.categories) && item.categories.length > 0)
     ? item.categories

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Users, Clock, CheckCircle, Plus, Edit, Trash2, Eye,
   IndianRupee, Filter, Search, UserCheck, HardHat, Phone,
-  CreditCard, ShieldCheck, MapPin, Building
+  CreditCard, ShieldCheck, MapPin, Building, Coins, FileSpreadsheet
 } from 'lucide-react';
 import { PageHeader } from '../../../components/layout/PageHeader';
 import { PageContainer } from '../../../components/layout/PageContainer';
@@ -208,10 +208,30 @@ export function LabourRegisterPage() {
           { label: 'Labour Register' }
         ]}
         actions={
-          <Button variant="primary" size="sm" onClick={openAdd} className="flex items-center gap-1.5">
-            <Plus className="w-4 h-4" />
-            New Employee
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/labour/wages')}
+              className="flex items-center gap-1.5 text-blue-700 border-blue-200 hover:bg-blue-50 text-xs"
+            >
+              <Coins className="w-3.5 h-3.5 text-blue-600" />
+              Daily Wage Entry
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/subcontracts/weekly-payments')}
+              className="flex items-center gap-1.5 text-emerald-700 border-emerald-200 hover:bg-emerald-50 text-xs"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              Weekly Slips
+            </Button>
+            <Button variant="primary" size="sm" onClick={openAdd} className="flex items-center gap-1.5 text-xs">
+              <Plus className="w-3.5 h-3.5" />
+              New Employee
+            </Button>
+          </div>
         }
       />
 

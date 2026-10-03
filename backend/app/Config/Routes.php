@@ -65,6 +65,9 @@ $routes->group(
     ['namespace' => 'App\\Controllers\\Api', 'filter' => 'apiAuth'],
     static function ($routes): void {
         $routes->get('', 'NavigationController::index');
+        $routes->get('modules', 'NavigationController::modules');
+        $routes->post('modules/toggle', 'NavigationController::toggleModule');
+        $routes->post('modules/bulk', 'NavigationController::bulkToggle');
     }
 );
 
@@ -523,6 +526,23 @@ $routes->group('api/daily-wages',['namespace'=>'App\\Controllers\\Api','filter'=
     $routes->get('(:num)','DailyWagesRegisterController::show/$1',['filter'=>'apiPermission:wages.view']);
     $routes->match(['put','patch'],'(:num)','DailyWagesRegisterController::update/$1',['filter'=>'apiPermission:wages.calculate']);
     $routes->post('(:num)/cancel','DailyWagesRegisterController::cancel/$1',['filter'=>'apiPermission:wages.approve']);
+    $routes->post('(:num)/approve','DailyWagesRegisterController::approve/$1',['filter'=>'apiPermission:wages.approve']);
+    $routes->post('(:num)/pay','DailyWagesRegisterController::pay/$1',['filter'=>'apiPermission:wages.pay']);
+});
+
+$routes->group('api/sub-work',['namespace'=>'App\\Controllers\\Api','filter'=>'apiAuth'],static function($routes):void{
+    $routes->get('setup','DailyWagesRegisterController::setup',['filter'=>'apiPermission:wages.view']);
+    $routes->get('templates','DailyWagesRegisterController::templates',['filter'=>'apiPermission:wages.view']);
+    $routes->post('templates','DailyWagesRegisterController::createTemplate',['filter'=>'apiPermission:wages.calculate']);
+    $routes->match(['put','patch'],'templates/(:num)','DailyWagesRegisterController::updateTemplate/$1',['filter'=>'apiPermission:wages.calculate']);
+    $routes->get('weekly-report','DailyWagesRegisterController::weeklyReport',['filter'=>'apiPermission:wages.view']);
+    $routes->get('','DailyWagesRegisterController::index',['filter'=>'apiPermission:wages.view']);
+    $routes->post('','DailyWagesRegisterController::create',['filter'=>'apiPermission:wages.calculate']);
+    $routes->get('(:num)','DailyWagesRegisterController::show/$1',['filter'=>'apiPermission:wages.view']);
+    $routes->match(['put','patch'],'(:num)','DailyWagesRegisterController::update/$1',['filter'=>'apiPermission:wages.calculate']);
+    $routes->post('(:num)/cancel','DailyWagesRegisterController::cancel/$1',['filter'=>'apiPermission:wages.approve']);
+    $routes->post('(:num)/approve','DailyWagesRegisterController::approve/$1',['filter'=>'apiPermission:wages.approve']);
+    $routes->post('(:num)/pay','DailyWagesRegisterController::pay/$1',['filter'=>'apiPermission:wages.pay']);
 });
 
 $routes->group('api/labour-wages',['namespace'=>'App\\Controllers\\Api','filter'=>'apiAuth'],static function($routes):void{

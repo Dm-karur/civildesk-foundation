@@ -21,7 +21,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://white-marten-572750.hostingersite.com/backend/public',
+        target: 'https://foundation.civildesk.in/backend/public',
         changeOrigin: true,
         secure: false,
       },

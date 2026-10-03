@@ -24,10 +24,11 @@ class DailyWagesRegisterController extends LabourApiController
 
         $companyId = $this->companyId($u);
         $b = db_connect()->table('daily_wage_registers d')
-            ->select('d.*,p.project_code,p.project_name,s.site_code,s.site_name,sc.contractor_code,sc.contractor_name')
+            ->select('d.*,p.project_code,p.project_name,s.site_code,s.site_name,sc.contractor_code,sc.contractor_name,ct.contractor_type_name,ct.contractor_type_code')
             ->join('projects p', 'p.id=d.project_id', 'left')
             ->join('project_sites s', 's.id=d.site_id')
             ->join('subcontractors sc', 'sc.id=d.subcontractor_id')
+            ->join('subcontractors_contractor_type_masters ct', 'ct.id=sc.contractor_type_id', 'left')
             ->where('d.company_id', $companyId)
             ->where('d.deleted_at', null);
 
@@ -50,14 +51,58 @@ class DailyWagesRegisterController extends LabourApiController
                 ->like('sc.contractor_name', $search)
                 ->orLike('sc.contractor_code', $search)
                 ->orLike('s.site_name', $search)
+                ->orLike('ct.contractor_type_name', $search)
                 ->groupEnd();
         }
 
-        return $this->ok(
-            'Daily wage entries retrieved successfully.',
-            'daily_wages',
-            $b->orderBy('d.wage_date', 'DESC')->orderBy('d.id', 'DESC')->get()->getResultArray()
-        );
+        $rows = $b->orderBy('d.wage_date', 'DESC')->orderBy('d.id', 'DESC')->get()->getResultArray();
+        if (!empty($rows)) {
+            $regIds = array_column($rows, 'id');
+            $allLines = db_connect()->table('daily_wage_register_lines l')
+                ->select('l.*')
+                ->whereIn('l.daily_wage_register_id', $regIds)
+                ->where('l.deleted_at', null)
+                ->orderBy('l.display_order', 'ASC')
+                ->orderBy('l.id', 'ASC')
+                ->get()->getResultArray();
+
+            $groupedLines = [];
+            foreach ($allLines as $line) {
+                $groupedLines[$line['daily_wage_register_id']][] = $line;
+            }
+
+            foreach ($rows as &$r) {
+                $rLines = $groupedLines[$r['id']] ?? [];
+                $r['lines'] = $rLines;
+                $mandays = 0.0;
+                $gross = (float) ($r['total_amount'] ?? 0);
+                foreach ($rLines as $ln) {
+                    $cls = strtolower($ln['classification'] ?? '');
+                    if ($cls === 'manpower' || empty($cls)) {
+                        $mandays += (float) ($ln['quantity'] ?? 0);
+                    }
+                }
+                $r['total_mandays'] = $mandays;
+                $r['avg_rate_per_day'] = $mandays > 0 ? round($gross / $mandays, 2) : ($gross > 0 ? $gross : 0);
+                $r['gross_amount'] = $gross;
+                $r['net_payable'] = $gross;
+                $r['voucher_no'] = !empty($r['register_no']) ? $r['register_no'] : ('DWR-' . str_pad((string) $r['id'], 5, '0', STR_PAD_LEFT));
+                $r['trade_category'] = !empty($r['contractor_type_name']) ? $r['contractor_type_name'] : 'Subcontractor Gang';
+                $r['contractor_id'] = $r['subcontractor_id'];
+                $r['week_start'] = $r['wage_date'];
+                $r['week_end'] = $r['wage_date'];
+            }
+            unset($r);
+        }
+
+        return $this->response->setStatusCode(200)->setJSON([
+            'success' => true,
+            'message' => 'Daily wage entries retrieved successfully.',
+            'data' => [
+                'daily_wages' => $rows,
+                'registers'   => $rows,
+            ]
+        ]);
     }
 
     public function show(int $id): ResponseInterface
@@ -131,7 +176,13 @@ class DailyWagesRegisterController extends LabourApiController
 
         $templates = [];
         $subcontractorId = $this->request->getGet('subcontractor_id');
+        $typeId = null;
+
         if (ctype_digit((string) ($subcontractorId ?? ''))) {
+            $sub = db_connect()->table('subcontractors')->select('contractor_type_id')->where('id', (int) $subcontractorId)->get()->getRowArray();
+            $typeId = $sub ? (int) $sub['contractor_type_id'] : null;
+
+            // 1. Subcontractor-specific templates
             $templates = db_connect()->table('daily_wage_item_templates')
                 ->where('company_id', $companyId)
                 ->where('subcontractor_id', (int) $subcontractorId)
@@ -141,21 +192,60 @@ class DailyWagesRegisterController extends LabourApiController
                 ->orderBy('description')
                 ->get()->getResultArray();
 
-            // Fallback to type or global defaults if subcontractor has no specific templates
-            if (empty($templates)) {
-                $sub = db_connect()->table('subcontractors')->select('contractor_type_id')->where('id', (int) $subcontractorId)->get()->getRowArray();
-                $typeId = $sub ? (int) $sub['contractor_type_id'] : null;
+            // 2. If no subcontractor-specific templates, check for trade/type templates
+            if (empty($templates) && $typeId) {
+                // First check subcontractor_type_template_items (where Masters -> Subcontractor Types saves templates)
+                $scItems = db_connect()->table('subcontractor_type_template_items')
+                    ->where('subcontractor_type_id', $typeId)
+                    ->where('deleted_at', null)
+                    ->where('status', 1)
+                    ->orderBy('sort_order', 'ASC')
+                    ->orderBy('id', 'ASC')
+                    ->get()->getResultArray();
 
-                $fb = db_connect()->table('daily_wage_item_templates')
+                if (!empty($scItems)) {
+                    foreach ($scItems as $scItem) {
+                        $templates[] = [
+                            'id' => (int) $scItem['id'],
+                            'company_id' => $companyId,
+                            'subcontractor_id' => (int) $subcontractorId,
+                            'subcontractor_type_id' => (int) $scItem['subcontractor_type_id'],
+                            'item_name' => $scItem['item_description'],
+                            'description' => $scItem['item_description'],
+                            'item_description' => $scItem['item_description'],
+                            'classification' => ucfirst(strtolower($scItem['classification'] ?? 'manpower')),
+                            'uom' => $scItem['unit'] ?? 'Nos',
+                            'unit' => $scItem['unit'] ?? 'Nos',
+                            'default_rate' => (float) ($scItem['default_rate'] ?? 0),
+                            'display_order' => (int) ($scItem['sort_order'] ?? 1),
+                            'is_active' => 1,
+                        ];
+                    }
+                } else {
+                    // Check daily_wage_item_templates specifically for this trade type
+                    $typeTemplates = db_connect()->table('daily_wage_item_templates')
+                        ->where('company_id', $companyId)
+                        ->where('subcontractor_type_id', $typeId)
+                        ->where('is_active', 1)
+                        ->where('deleted_at', null)
+                        ->orderBy('display_order')
+                        ->orderBy('description')
+                        ->get()->getResultArray();
+
+                    if (!empty($typeTemplates)) {
+                        $templates = $typeTemplates;
+                    }
+                }
+            }
+
+            // 3. ONLY if still empty (no subcontractor templates AND no trade templates), fallback to global defaults
+            if (empty($templates)) {
+                $templates = db_connect()->table('daily_wage_item_templates')
                     ->where('company_id', $companyId)
+                    ->where('subcontractor_id', null)
+                    ->where('subcontractor_type_id', null)
                     ->where('is_active', 1)
                     ->where('deleted_at', null)
-                    ->groupStart()
-                        ->where('subcontractor_id', null);
-                if ($typeId) {
-                    $fb->orWhere('subcontractor_type_id', $typeId);
-                }
-                $templates = $fb->groupEnd()
                     ->orderBy('display_order')
                     ->orderBy('description')
                     ->get()->getResultArray();
@@ -170,14 +260,57 @@ class DailyWagesRegisterController extends LabourApiController
                 ->orderBy('display_order')
                 ->orderBy('description')
                 ->get()->getResultArray();
+
+            if (empty($templates)) {
+                $scItems = db_connect()->table('subcontractor_type_template_items')
+                    ->where('deleted_at', null)
+                    ->where('status', 1)
+                    ->orderBy('sort_order', 'ASC')
+                    ->orderBy('id', 'ASC')
+                    ->get()->getResultArray();
+
+                foreach ($scItems as $scItem) {
+                    $templates[] = [
+                        'id' => (int) $scItem['id'],
+                        'company_id' => $companyId,
+                        'subcontractor_id' => null,
+                        'subcontractor_type_id' => (int) $scItem['subcontractor_type_id'],
+                        'item_name' => $scItem['item_description'],
+                        'description' => $scItem['item_description'],
+                        'item_description' => $scItem['item_description'],
+                        'classification' => ucfirst(strtolower($scItem['classification'] ?? 'manpower')),
+                        'uom' => $scItem['unit'] ?? 'Nos',
+                        'unit' => $scItem['unit'] ?? 'Nos',
+                        'default_rate' => (float) ($scItem['default_rate'] ?? 0),
+                        'display_order' => (int) ($scItem['sort_order'] ?? 1),
+                        'is_active' => 1,
+                    ];
+                }
+            }
         }
+
+        // Normalize template properties for frontend consistency
+        $normalizedTemplates = array_map(function ($t) {
+            $name = $t['item_name'] ?? $t['description'] ?? $t['item_description'] ?? 'Trade Item';
+            $unit = $t['uom'] ?? $t['unit'] ?? 'Nos';
+            return array_merge($t, [
+                'item_name' => $name,
+                'description' => $name,
+                'item_description' => $name,
+                'uom' => $unit,
+                'unit' => $unit,
+                'classification' => ucfirst(strtolower($t['classification'] ?? 'manpower')),
+                'default_rate' => (float) ($t['default_rate'] ?? 0),
+            ]);
+        }, $templates);
 
         return $this->ok('Daily wage setup retrieved successfully.', 'setup', [
             'projects' => $projects,
             'sites' => $sites,
             'subcontractors' => $subcontractors,
             'subcontractor_types' => $subcontractorTypes,
-            'templates' => $templates,
+            'templates' => $normalizedTemplates,
+            'default_templates' => $normalizedTemplates,
             'classifications' => self::CLASSIFICATIONS,
         ]);
     }
@@ -202,10 +335,43 @@ class DailyWagesRegisterController extends LabourApiController
                 ->orWhere('t.subcontractor_id', null)
                 ->groupEnd();
         }
-        $active = $this->request->getGet('is_active');
-        if (in_array((string) $active, ['0', '1'], true)) $b->where('t.is_active', (int) $active);
+        $items = $b->orderBy('t.display_order')->orderBy('t.id')->get()->getResultArray();
 
-        return $this->ok('Daily wage templates retrieved successfully.', 'templates', $b->orderBy('t.display_order')->orderBy('t.id')->get()->getResultArray());
+        // If no daily_wage_item_templates found, check subcontractor_type_template_items
+        if (empty($items)) {
+            $typeId = null;
+            if (ctype_digit((string) ($sub ?? ''))) {
+                $subRow = db_connect()->table('subcontractors')->select('contractor_type_id')->where('id', (int) $sub)->get()->getRowArray();
+                $typeId = $subRow ? (int) $subRow['contractor_type_id'] : null;
+            }
+
+            $scBuilder = db_connect()->table('subcontractor_type_template_items')
+                ->where('deleted_at', null)
+                ->where('status', 1);
+            if ($typeId) {
+                $scBuilder->where('subcontractor_type_id', $typeId);
+            }
+            $scItems = $scBuilder->orderBy('sort_order', 'ASC')->orderBy('id', 'ASC')->get()->getResultArray();
+
+            foreach ($scItems as $si) {
+                $items[] = [
+                    'id' => (int) $si['id'],
+                    'company_id' => $companyId,
+                    'subcontractor_id' => ctype_digit((string) ($sub ?? '')) ? (int) $sub : null,
+                    'subcontractor_type_id' => (int) $si['subcontractor_type_id'],
+                    'description' => $si['item_description'],
+                    'item_name' => $si['item_description'],
+                    'classification' => ucfirst(strtolower($si['classification'] ?? 'manpower')),
+                    'uom' => $si['unit'] ?? 'Nos',
+                    'unit' => $si['unit'] ?? 'Nos',
+                    'default_rate' => (float) ($si['default_rate'] ?? 0),
+                    'display_order' => (int) ($si['sort_order'] ?? 1),
+                    'is_active' => 1,
+                ];
+            }
+        }
+
+        return $this->ok('Daily wage templates retrieved successfully.', 'templates', $items);
     }
 
     public function createTemplate(): ResponseInterface
@@ -373,6 +539,48 @@ class DailyWagesRegisterController extends LabourApiController
         return $this->show($id);
     }
 
+    public function approve(int $id): ResponseInterface
+    {
+        $u = $this->user();
+        if ($u === null) return $this->unauthorized();
+        $companyId = $this->companyId($u);
+        $row = $this->record('daily_wage_registers', $id, $companyId, true);
+        if ($row === null) return $this->notFound();
+
+        db_connect()->table('daily_wage_registers')->where(['id'=>$id,'company_id'=>$companyId])->update([
+            'status' => 'APPROVED',
+            'updated_by' => (int) $u->id,
+            'updated_at' => $this->now(),
+        ]);
+        return $this->show($id);
+    }
+
+    public function pay(int $id): ResponseInterface
+    {
+        $u = $this->user();
+        if ($u === null) return $this->unauthorized();
+        $companyId = $this->companyId($u);
+        $row = $this->record('daily_wage_registers', $id, $companyId, true);
+        if ($row === null) return $this->notFound();
+
+        $in = $this->input() ?? [];
+        $remarks = trim((string)($in['remarks'] ?? $in['notes'] ?? ''));
+        $refNo = trim((string)($in['reference_no'] ?? ''));
+        $paymentMode = trim((string)($in['payment_mode'] ?? ''));
+
+        $updateData = [
+            'status' => 'PAID',
+            'updated_by' => (int) $u->id,
+            'updated_at' => $this->now(),
+        ];
+        if ($remarks !== '') {
+            $updateData['global_remarks'] = !empty($row['global_remarks']) ? ($row['global_remarks'] . ' | ' . $remarks) : $remarks;
+        }
+
+        db_connect()->table('daily_wage_registers')->where(['id'=>$id,'company_id'=>$companyId])->update($updateData);
+        return $this->show($id);
+    }
+
     public function weeklyReport(): ResponseInterface
     {
         $u = $this->user();
@@ -485,20 +693,30 @@ class DailyWagesRegisterController extends LabourApiController
         $old = $id ? $this->record('daily_wage_item_templates', $id, $companyId, true) : null;
         if ($id && $old === null) return $this->notFound();
         $m = array_merge($old ?? [], $in);
+        $desc = trim((string) ($m['description'] ?? $m['item_name'] ?? ''));
+        $m['description'] = $desc;
+        $uom = trim((string) ($m['uom'] ?? $m['unit'] ?? ''));
+        $m['uom'] = $uom;
+
         $errors = $this->required($m, ['description','classification','uom','default_rate']);
         if (!empty($m['subcontractor_id']) && !$this->activeSubcontractor((int) $m['subcontractor_id'], $companyId)) {
             $errors['subcontractor_id'] = 'Select a valid active subcontractor.';
         }
-        if (!in_array((string) ($m['classification'] ?? ''), self::CLASSIFICATIONS, true)) $errors['classification'] = 'Classification must be Manpower, Equipment or Expense.';
+        $cls = ucfirst(strtolower((string) ($m['classification'] ?? 'manpower')));
+        if (!in_array($cls, self::CLASSIFICATIONS, true) && !in_array((string) ($m['classification'] ?? ''), self::CLASSIFICATIONS, true)) {
+            $errors['classification'] = 'Classification must be Manpower, Equipment or Expense.';
+        } else {
+            $m['classification'] = in_array($cls, self::CLASSIFICATIONS, true) ? $cls : (string) $m['classification'];
+        }
         if (!is_numeric($m['default_rate'] ?? null) || (float) $m['default_rate'] < 0) $errors['default_rate'] = 'Default rate must be zero or greater.';
         if ($errors) return $this->invalid($errors);
 
         $data = [
             'subcontractor_id' => !empty($m['subcontractor_id']) ? (int) $m['subcontractor_id'] : null,
             'subcontractor_type_id' => !empty($m['subcontractor_type_id']) ? (int) $m['subcontractor_type_id'] : null,
-            'description' => trim((string) $m['description']),
+            'description' => $desc,
             'classification' => (string) $m['classification'],
-            'uom' => trim((string) $m['uom']),
+            'uom' => $uom ?: 'Nos',
             'default_rate' => round((float) $m['default_rate'], 2),
             'display_order' => (int) ($m['display_order'] ?? 0),
             'is_active' => isset($m['is_active']) ? (int) (bool) $m['is_active'] : 1,
@@ -540,12 +758,19 @@ class DailyWagesRegisterController extends LabourApiController
         foreach ($lines as $i => $line) {
             if (!is_array($line)) { $errors['lines.' . $i] = 'Invalid line.'; continue; }
             $prefix = 'lines.' . $i . '.';
-            if (trim((string) ($line['description'] ?? '')) === '') $errors[$prefix.'description'] = 'Item description is required.';
-            if (!in_array((string) ($line['classification'] ?? ''), self::CLASSIFICATIONS, true)) $errors[$prefix.'classification'] = 'Use Manpower, Equipment or Expense.';
-            if (trim((string) ($line['uom'] ?? '')) === '') $errors[$prefix.'uom'] = 'Unit is required.';
-            if (!is_numeric($line['quantity'] ?? null) || (float) $line['quantity'] <= 0) $errors[$prefix.'quantity'] = 'Quantity must be greater than zero.';
-            if (!is_numeric($line['rate'] ?? null) || (float) $line['rate'] < 0) $errors[$prefix.'rate'] = 'Rate must be zero or greater.';
-            if (is_numeric($line['quantity'] ?? null) && (float) $line['quantity'] > 0 && is_numeric($line['rate'] ?? null) && (float) $line['rate'] >= 0) $usable++;
+            $desc = trim((string) ($line['description'] ?? $line['item_name'] ?? ''));
+            if ($desc === '') $errors[$prefix.'description'] = 'Item description is required.';
+            $cls = ucfirst(strtolower((string) ($line['classification'] ?? 'manpower')));
+            if (!in_array($cls, self::CLASSIFICATIONS, true) && !in_array((string) ($line['classification'] ?? ''), self::CLASSIFICATIONS, true)) {
+                $errors[$prefix.'classification'] = 'Use Manpower, Equipment or Expense.';
+            }
+            $uom = trim((string) ($line['uom'] ?? $line['unit'] ?? ''));
+            if ($uom === '') $errors[$prefix.'uom'] = 'Unit is required.';
+            $qty = $line['quantity'] ?? $line['shift_quantity'] ?? null;
+            if (!is_numeric($qty) || (float) $qty <= 0) $errors[$prefix.'quantity'] = 'Quantity must be greater than zero.';
+            $rate = $line['rate'] ?? $line['unit_rate'] ?? null;
+            if (!is_numeric($rate) || (float) $rate < 0) $errors[$prefix.'rate'] = 'Rate must be zero or greater.';
+            if (is_numeric($qty) && (float) $qty > 0 && is_numeric($rate) && (float) $rate >= 0) $usable++;
         }
         if ($usable === 0) $errors['lines'] = 'Enter at least one item with quantity greater than zero.';
         return $errors;
@@ -557,17 +782,21 @@ class DailyWagesRegisterController extends LabourApiController
         $order = 1;
         foreach ($lines as $line) {
             if (!is_array($line)) continue;
-            $qty = round((float) ($line['quantity'] ?? 0), 4);
+            $qty = round((float) ($line['quantity'] ?? $line['shift_quantity'] ?? 0), 4);
             if ($qty <= 0) continue;
-            $rate = round((float) ($line['rate'] ?? 0), 2);
+            $rate = round((float) ($line['rate'] ?? $line['unit_rate'] ?? 0), 2);
             $amount = round($qty * $rate, 2);
+            $desc = trim((string) ($line['description'] ?? $line['item_name'] ?? ''));
+            $uom = trim((string) ($line['uom'] ?? $line['unit'] ?? 'Nos'));
+            $cls = (string) ($line['classification'] ?? 'Manpower');
+            $cls = in_array(ucfirst(strtolower($cls)), self::CLASSIFICATIONS, true) ? ucfirst(strtolower($cls)) : $cls;
             $db->table('daily_wage_register_lines')->insert([
                 'company_id' => $companyId,
                 'daily_wage_register_id' => $registerId,
                 'template_id' => !empty($line['template_id']) ? (int) $line['template_id'] : null,
-                'description' => trim((string) $line['description']),
-                'classification' => (string) $line['classification'],
-                'uom' => trim((string) $line['uom']),
+                'description' => $desc,
+                'classification' => $cls,
+                'uom' => $uom,
                 'quantity' => $qty,
                 'rate' => $rate,
                 'amount' => $amount,

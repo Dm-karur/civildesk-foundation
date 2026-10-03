@@ -121,9 +121,12 @@ import {
 import { clsx } from 'clsx';
 import { navigationApi } from '../../api/apiservice';
 import { useAuth } from '../../features/auth/context/AuthContext';
+import { useModules } from '../../features/settings/context/ModulesContext';
 
 const ICONS_BY_KEY = Object.freeze({
   'layout-dashboard': LayoutDashboard,
+  'sliders-horizontal': SlidersHorizontal,
+  boxes: Boxes,
   briefcase: Briefcase,
   'folder-cog': FolderCog,
   settings: Settings,
@@ -188,6 +191,7 @@ const ICONS_BY_CODE = Object.freeze({
   CLIENT_PORTAL: MonitorSmartphone,
   MASTERS: FolderCog,
   ADMINISTRATION: Settings,
+  ADMIN_MODULE_SETTINGS: SlidersHorizontal,
 
   EXECUTIVE_DASHBOARD: LayoutDashboard,
   PROJECT_DASHBOARD: FolderKanban,
@@ -252,6 +256,7 @@ const ICONS_BY_CODE = Object.freeze({
   HRM_SHIFTS: Clock,
   HRM_SALARY: Coins,
   DAILY_WAGES: Coins,
+  DAILY_WAGES_TEMPLATE: Coins,
   HRM_PAYROLL: Receipt,
   WAGE_APPROVAL: BadgeCheck,
   HRM_PAYSLIPS: Scroll,
@@ -302,6 +307,7 @@ const ICONS_BY_CODE = Object.freeze({
 
   SUBCONTRACTORS: Contact,
   SUBCONTRACTOR_TYPES: Layers,
+  SUB_WORK_ENTRY: ClipboardList,
   SUBCONTRACTOR_WEEKLY_SLIP: CalendarDays,
   WORK_ORDERS: FileSignature,
   WORK_ORDER_APPROVAL: CheckCircle2,
@@ -740,17 +746,25 @@ function NavigationItem({ item, openByDepth, onToggle, onNavigate, depth = 0 }) 
 
 export function Sidebar({ isMobileOpen, onCloseMobile }) {
   const { user, logout } = useAuth();
+  const { isModuleEnabled } = useModules();
   const location = useLocation();
   const [navigation, setNavigation] = useState([]);
   const [error, setError] = useState('');
   const [openByDepth, setOpenByDepth] = useState({});
+  const [navVersion, setNavVersion] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setNavVersion((v) => v + 1);
+    window.addEventListener('civildesk:modules-updated', handleUpdate);
+    return () => window.removeEventListener('civildesk:modules-updated', handleUpdate);
+  }, []);
 
   useEffect(() => {
     let active = true;
     navigationApi.list()
       .then((items) => {
         if (active) {
-          // 1. Filter out Projects from primary navigation entirely
+          // 1. Filter out Projects and any disabled modules
           let list = (items || []).filter((item) => {
             const code = String(item.item_code || '').toUpperCase();
             const name = String(item.item_name || '').toLowerCase();
@@ -758,188 +772,269 @@ export function Sidebar({ isMobileOpen, onCloseMobile }) {
             if (code === 'PROJECTS' || code === 'PROJECT_MANAGEMENT' || code === 'PROJECT' || code === 'PROJECT_SETUP') return false;
             if (name === 'projects' || name === 'project management') return false;
             if (path === '/projects') return false;
+            if (!isModuleEnabled(code)) return false;
             return true;
           });
 
-          // 2. Ensure SITES is primary top-level item right after Dashboard
-          const existingSitesNode = list.find((i) =>
-            String(i.item_code || '').toUpperCase().includes('SITE') ||
-            String(i.item_name || '').toLowerCase() === 'sites' ||
-            String(i.item_name || '').toLowerCase().includes('sites &')
-          );
+          // 2. SITES module handling
+          if (isModuleEnabled('SITES_LOCATIONS') || isModuleEnabled('PRIMARY_SITES')) {
+            const existingSitesNode = list.find((i) =>
+              String(i.item_code || '').toUpperCase().includes('SITE') ||
+              String(i.item_name || '').toLowerCase() === 'sites' ||
+              String(i.item_name || '').toLowerCase().includes('sites &')
+            );
 
-          const sitesModule = {
-            item_code: 'PRIMARY_SITES',
-            item_name: 'Sites',
-            icon_key: 'hard-hat',
-            children: [
-              { item_code: 'SITE_DIR', item_name: 'Site Directory', route_path: '/sites', icon_key: 'building-2' },
-              { item_code: 'SITE_MAP_NAV', item_name: 'Map View', route_path: '/sites/map', icon_key: 'map' },
-              { item_code: 'SITE_ZONES_NAV', item_name: 'Work Zones', route_path: '/sites/zones', icon_key: 'layers' },
-              { item_code: 'SITE_LOC_NAV', item_name: 'Work Locations', route_path: '/sites/work-locations', icon_key: 'navigation' },
-              { item_code: 'SITE_TEAM_NAV', item_name: 'Site Team', route_path: '/sites/team', icon_key: 'users' },
-              { item_code: 'SITE_DOCS_NAV', item_name: 'Site Documents', route_path: '/sites/documents', icon_key: 'file-text' },
-            ],
-          };
-
-          // Replace or insert Sites
-          if (existingSitesNode) {
-            list = list.map((i) => (i === existingSitesNode ? sitesModule : i));
-          } else {
-            // Insert after dashboard if exists
-            const dashIdx = list.findIndex((i) => String(i.route_path || '').includes('/dashboard'));
-            if (dashIdx !== -1) {
-              list.splice(dashIdx + 1, 0, sitesModule);
-            } else {
-              list.unshift(sitesModule);
-            }
-          }
-
-          // 3. Ensure CLIENTS is top-level
-          const hasClients = list.some((i) =>
-            String(i.route_path || '') === '/project-masters/clients' ||
-            String(i.item_name || '').toLowerCase() === 'clients'
-          );
-          if (!hasClients) {
-            const sIdx = list.findIndex((i) => i.item_code === 'PRIMARY_SITES');
-            const clientItem = {
-              item_code: 'PRIMARY_CLIENTS',
-              item_name: 'Clients',
-              route_path: '/project-masters/clients',
-              icon_key: 'briefcase',
-            };
-            if (sIdx !== -1) {
-              list.splice(sIdx + 1, 0, clientItem);
-            } else {
-              list.push(clientItem);
-            }
-          }
-
-          // 4. Ensure Procurement has Material Request Approval if present
-          const procNode = list.find((i) => i.item_name === 'Procurement' || i.item_code === 'PROCUREMENT');
-          if (procNode && procNode.children) {
-            const hasAppr = procNode.children.some((c) => c.route_path === '/procurement/material-request-approval');
-            if (!hasAppr) {
-              const reqIdx = procNode.children.findIndex((c) => c.route_path === '/procurement/requisitions' || c.item_code === 'PURCHASE_REQUISITIONS');
-              const newItem = {
-                item_code: 'MATERIAL_REQUEST_APPROVAL',
-                item_name: 'Material Request Approval',
-                route_path: '/procurement/material-request-approval',
-                icon_key: 'check-square',
-              };
-              if (reqIdx !== -1) procNode.children.splice(reqIdx + 1, 0, newItem);
-              else procNode.children.unshift(newItem);
-            }
-          }
-
-          // 5. Streamline BOQ Navigation into modern Site-Centric structure
-          const boqNode = list.find((i) =>
-            i.item_code === 'BOQ' ||
-            i.item_code === 'PROJECT_BOQS' ||
-            String(i.item_name || '').toLowerCase().includes('boq') ||
-            String(i.route_path || '').includes('/boq')
-          );
-          if (boqNode) {
-            boqNode.item_name = 'BOQ & Budget';
-            boqNode.icon_key = 'calculator';
-            boqNode.children = [
-              { item_code: 'BOQ_DASH', item_name: 'BOQ Dashboard', route_path: '/boq/dashboard', icon_key: 'pie-chart' },
-              { item_code: 'BOQ_REG', item_name: 'BOQ Register', route_path: '/boq', icon_key: 'file-spreadsheet' },
-              { item_code: 'BOQ_IMPORT', item_name: 'Import BOQ', route_path: '/boq/import', icon_key: 'file-up' },
-              { item_code: 'BOQ_REPORTS', item_name: 'BOQ Reports', route_path: '/boq/reports', icon_key: 'file-bar-chart' },
-            ];
-          }
-
-          // 6. Ensure HRM & GPS Attendance Module is present
-          const hasHrm = list.some((i) => i.item_code === 'PRIMARY_HRM' || String(i.item_name || '').toLowerCase().includes('hrm'));
-          if (!hasHrm) {
-            const hrmModule = {
-              item_code: 'PRIMARY_HRM',
-              item_name: 'HRM & Attendance',
-              icon_key: 'user-check',
+            const sitesModule = {
+              item_code: 'PRIMARY_SITES',
+              item_name: 'Sites',
+              icon_key: 'hard-hat',
               children: [
-                { item_code: 'HRM_CHECKIN', item_name: 'GPS Check-In', route_path: '/hrm/check-in', icon_key: 'map-pin' },
-                { item_code: 'HRM_ATTENDANCE', item_name: 'Attendance Register', route_path: '/hrm/attendance', icon_key: 'calendar-check' },
-                { item_code: 'HRM_CORRECTIONS', item_name: 'Corrections', route_path: '/hrm/corrections', icon_key: 'file-edit' },
-                { item_code: 'HRM_LEAVES', item_name: 'Leave & Permissions', route_path: '/hrm/leaves', icon_key: 'calendar-off' },
-                { item_code: 'HRM_SHIFTS', item_name: 'Shift & Holidays', route_path: '/hrm/shifts-holidays', icon_key: 'clock' },
-                { item_code: 'HRM_SALARY', item_name: 'Salary & Advances', route_path: '/hrm/salary-structures', icon_key: 'coins' },
-                { item_code: 'HRM_PAYROLL', item_name: 'Payroll Processing', route_path: '/hrm/payroll', icon_key: 'receipt' },
-                { item_code: 'HRM_PAYSLIPS', item_name: 'My Payslips', route_path: '/hrm/payslips', icon_key: 'scroll' },
-                { item_code: 'HRM_REPORTS', item_name: 'HRM Reports', route_path: '/hrm/reports', icon_key: 'file-bar-chart' },
+                { item_code: 'SITE_DIR', item_name: 'Site Directory', route_path: '/sites', icon_key: 'building-2' },
+                { item_code: 'SITE_MAP_NAV', item_name: 'Map View', route_path: '/sites/map', icon_key: 'map' },
+                { item_code: 'SITE_ZONES_NAV', item_name: 'Work Zones', route_path: '/sites/zones', icon_key: 'layers' },
+                { item_code: 'SITE_LOC_NAV', item_name: 'Work Locations', route_path: '/sites/work-locations', icon_key: 'navigation' },
+                { item_code: 'SITE_TEAM_NAV', item_name: 'Site Team', route_path: '/sites/team', icon_key: 'users' },
+                { item_code: 'SITE_DOCS_NAV', item_name: 'Site Documents', route_path: '/sites/documents', icon_key: 'file-text' },
               ],
             };
 
-            const labourIdx = list.findIndex((i) =>
-              i.item_code === 'LABOUR' ||
-              String(i.item_name || '').toLowerCase().includes('labour')
-            );
-            if (labourIdx !== -1) {
-              list.splice(labourIdx + 1, 0, hrmModule);
+            if (existingSitesNode) {
+              list = list.map((i) => (i === existingSitesNode ? sitesModule : i));
             } else {
-              const adminIdx = list.findIndex((i) =>
-                i.item_code === 'ADMINISTRATION' ||
-                String(i.item_name || '').toLowerCase().includes('admin')
-              );
-              if (adminIdx !== -1) {
-                list.splice(adminIdx, 0, hrmModule);
+              const dashIdx = list.findIndex((i) => String(i.route_path || '').includes('/dashboard'));
+              if (dashIdx !== -1) {
+                list.splice(dashIdx + 1, 0, sitesModule);
               } else {
-                list.push(hrmModule);
+                list.unshift(sitesModule);
+              }
+            }
+          } else {
+            list = list.filter((i) => !String(i.item_code || '').toUpperCase().includes('SITE') && !String(i.item_name || '').toLowerCase().includes('site'));
+          }
+
+          // 3. CLIENTS module handling
+          if (isModuleEnabled('CLIENTS') || isModuleEnabled('PRIMARY_CLIENTS')) {
+            const hasClients = list.some((i) =>
+              String(i.route_path || '') === '/project-masters/clients' ||
+              String(i.item_name || '').toLowerCase() === 'clients'
+            );
+            if (!hasClients) {
+              const sIdx = list.findIndex((i) => i.item_code === 'PRIMARY_SITES');
+              const clientItem = {
+                item_code: 'PRIMARY_CLIENTS',
+                item_name: 'Clients',
+                route_path: '/project-masters/clients',
+                icon_key: 'briefcase',
+              };
+              if (sIdx !== -1) {
+                list.splice(sIdx + 1, 0, clientItem);
+              } else {
+                list.push(clientItem);
+              }
+            }
+          } else {
+            list = list.filter((i) => i.item_code !== 'PRIMARY_CLIENTS' && String(i.item_name || '').toLowerCase() !== 'clients');
+          }
+
+          // 4. Procurement Material Request Approval
+          if (isModuleEnabled('PROCUREMENT')) {
+            const procNode = list.find((i) => i.item_name === 'Procurement' || i.item_code === 'PROCUREMENT');
+            if (procNode && procNode.children) {
+              const hasAppr = procNode.children.some((c) => c.route_path === '/procurement/material-request-approval');
+              if (!hasAppr) {
+                const reqIdx = procNode.children.findIndex((c) => c.route_path === '/procurement/requisitions' || c.item_code === 'PURCHASE_REQUISITIONS');
+                const newItem = {
+                  item_code: 'MATERIAL_REQUEST_APPROVAL',
+                  item_name: 'Material Request Approval',
+                  route_path: '/procurement/material-request-approval',
+                  icon_key: 'check-square',
+                };
+                if (reqIdx !== -1) procNode.children.splice(reqIdx + 1, 0, newItem);
+                else procNode.children.unshift(newItem);
               }
             }
           }
 
-          // 7. Streamline Subcontract Navigation to only:
-          // Subcontractor, Subcontractor Types, Weekly Slip, Subcontractor Payments, Subcontractor Reports
-          const subcontractModule = {
-            item_code: 'PRIMARY_SUBCONTRACTS',
-            item_name: 'Subcontractors',
-            icon_key: 'hard-hat',
-            children: [
-              {
-                item_code: 'SUBCONTRACTORS',
-                item_name: 'Subcontractors',
-                route_path: '/subcontracts/subcontractors',
-                icon_key: 'contact',
-              },
-              {
-                item_code: 'SUBCONTRACTOR_TYPES',
-                item_name: 'Subcontractor Types',
-                route_path: '/masters/subcontractor-types',
-                icon_key: 'layers',
-              },
-              {
-                item_code: 'SUBCONTRACTOR_WEEKLY_SLIP',
-                item_name: 'Weekly Slip',
-                route_path: '/subcontracts/weekly-payments',
-                icon_key: 'calendar-days',
-              },
-              {
-                item_code: 'SUBCONTRACTOR_PAYMENTS',
-                item_name: 'Subcontractor Payments',
-                route_path: '/subcontracts/payments',
-                icon_key: 'wallet',
-              },
-              {
-                item_code: 'SUBCONTRACT_REPORTS',
-                item_name: 'Subcontractor Reports',
-                route_path: '/reports/subcontracts',
-                icon_key: 'file-bar-chart',
-              },
-            ],
-          };
-
-          const existingSubIdx = list.findIndex((i) =>
-            i.item_code === 'SUBCONTRACT_MANAGEMENT' ||
-            i.item_code === 'PRIMARY_SUBCONTRACTS' ||
-            String(i.item_name || '').toLowerCase().includes('subcontract')
-          );
-
-          if (existingSubIdx !== -1) {
-            list[existingSubIdx] = subcontractModule;
+          // 5. BOQ Navigation
+          if (isModuleEnabled('BOQ_BUDGET')) {
+            const boqNode = list.find((i) =>
+              i.item_code === 'BOQ' ||
+              i.item_code === 'PROJECT_BOQS' ||
+              i.item_code === 'BOQ_BUDGET' ||
+              String(i.item_name || '').toLowerCase().includes('boq') ||
+              String(i.route_path || '').includes('/boq')
+            );
+            if (boqNode) {
+              boqNode.item_name = 'BOQ & Budget';
+              boqNode.icon_key = 'calculator';
+              boqNode.children = [
+                { item_code: 'BOQ_DASH', item_name: 'BOQ Dashboard', route_path: '/boq/dashboard', icon_key: 'pie-chart' },
+                { item_code: 'BOQ_REG', item_name: 'BOQ Register', route_path: '/boq', icon_key: 'file-spreadsheet' },
+                { item_code: 'BOQ_IMPORT', item_name: 'Import BOQ', route_path: '/boq/import', icon_key: 'file-up' },
+                { item_code: 'BOQ_REPORTS', item_name: 'BOQ Reports', route_path: '/boq/reports', icon_key: 'file-bar-chart' },
+              ];
+            }
           } else {
-            list.push(subcontractModule);
+            list = list.filter((i) => i.item_code !== 'BOQ_BUDGET' && i.item_code !== 'BOQ' && !String(i.item_name || '').toLowerCase().includes('boq'));
           }
+
+          // 6. HRM & GPS Attendance Module
+          if (isModuleEnabled('PRIMARY_HRM') && isModuleEnabled('LABOUR_ATTENDANCE')) {
+            const hasHrm = list.some((i) => i.item_code === 'PRIMARY_HRM' || String(i.item_name || '').toLowerCase().includes('hrm'));
+            if (!hasHrm) {
+              const hrmModule = {
+                item_code: 'PRIMARY_HRM',
+                item_name: 'HRM & Attendance',
+                icon_key: 'user-check',
+                children: [
+                  { item_code: 'HRM_CHECKIN', item_name: 'GPS Check-In', route_path: '/hrm/check-in', icon_key: 'map-pin' },
+                  { item_code: 'HRM_ATTENDANCE', item_name: 'Attendance Register', route_path: '/hrm/attendance', icon_key: 'calendar-check' },
+                  { item_code: 'HRM_CORRECTIONS', item_name: 'Corrections', route_path: '/hrm/corrections', icon_key: 'file-edit' },
+                  { item_code: 'HRM_LEAVES', item_name: 'Leave & Permissions', route_path: '/hrm/leaves', icon_key: 'calendar-off' },
+                  { item_code: 'HRM_SHIFTS', item_name: 'Shift & Holidays', route_path: '/hrm/shifts-holidays', icon_key: 'clock' },
+                  { item_code: 'HRM_SALARY', item_name: 'Salary & Advances', route_path: '/hrm/salary-structures', icon_key: 'coins' },
+                  { item_code: 'HRM_PAYROLL', item_name: 'Payroll Processing', route_path: '/hrm/payroll', icon_key: 'receipt' },
+                  { item_code: 'HRM_PAYSLIPS', item_name: 'My Payslips', route_path: '/hrm/payslips', icon_key: 'scroll' },
+                  { item_code: 'HRM_REPORTS', item_name: 'HRM Reports', route_path: '/hrm/reports', icon_key: 'file-bar-chart' },
+                ],
+              };
+
+              const labourIdx = list.findIndex((i) =>
+                i.item_code === 'LABOUR' ||
+                i.item_code === 'LABOUR_ATTENDANCE' ||
+                String(i.item_name || '').toLowerCase().includes('labour')
+              );
+              if (labourIdx !== -1) {
+                list.splice(labourIdx + 1, 0, hrmModule);
+              } else {
+                const adminIdx = list.findIndex((i) =>
+                  i.item_code === 'ADMINISTRATION' ||
+                  String(i.item_name || '').toLowerCase().includes('admin')
+                );
+                if (adminIdx !== -1) {
+                  list.splice(adminIdx, 0, hrmModule);
+                } else {
+                  list.push(hrmModule);
+                }
+              }
+            }
+          } else {
+            list = list.filter((i) => i.item_code !== 'PRIMARY_HRM' && !String(i.item_name || '').toLowerCase().includes('hrm'));
+          }
+
+          // 7. Sub Work & Subcontract Navigation
+          if (isModuleEnabled('SUBCONTRACT_MANAGEMENT') || isModuleEnabled('PRIMARY_SUBCONTRACTS')) {
+            const subcontractModule = {
+              item_code: 'PRIMARY_SUBCONTRACTS',
+              item_name: 'Sub Work & Contractors',
+              icon_key: 'hard-hat',
+              children: [
+                {
+                  item_code: 'SUBCONTRACTORS',
+                  item_name: 'Subcontractors',
+                  route_path: '/subcontracts/subcontractors',
+                  icon_key: 'contact',
+                },
+                {
+                  item_code: 'SUBCONTRACTOR_TYPES',
+                  item_name: 'Subcontractor Types',
+                  route_path: '/masters/subcontractor-types',
+                  icon_key: 'layers',
+                },
+                {
+                  item_code: 'SUB_WORK_ENTRY',
+                  item_name: 'Daily Sub Work Entry',
+                  route_path: '/subcontracts/daily-work',
+                  icon_key: 'clipboard-list',
+                },
+                {
+                  item_code: 'DAILY_WAGES_TEMPLATE',
+                  item_name: 'Daily Wages (Template)',
+                  route_path: '/subcontracts/daily-wages',
+                  icon_key: 'coins',
+                },
+                {
+                  item_code: 'SUBCONTRACTOR_WEEKLY_SLIP',
+                  item_name: 'Weekly Slip & Payouts',
+                  route_path: '/subcontracts/weekly-payments',
+                  icon_key: 'calendar-days',
+                },
+                {
+                  item_code: 'SUBCONTRACTOR_PAYMENTS',
+                  item_name: 'Subcontractor Payments',
+                  route_path: '/subcontracts/payments',
+                  icon_key: 'wallet',
+                },
+                {
+                  item_code: 'SUBCONTRACT_REPORTS',
+                  item_name: 'Subcontractor Reports',
+                  route_path: '/reports/subcontracts',
+                  icon_key: 'file-bar-chart',
+                },
+              ],
+            };
+
+            const existingSubIdx = list.findIndex((i) =>
+              i.item_code === 'SUBCONTRACT_MANAGEMENT' ||
+              i.item_code === 'PRIMARY_SUBCONTRACTS' ||
+              String(i.item_name || '').toLowerCase().includes('subcontract') ||
+              String(i.item_name || '').toLowerCase().includes('sub work')
+            );
+
+            if (existingSubIdx !== -1) {
+              list[existingSubIdx] = subcontractModule;
+            } else {
+              list.push(subcontractModule);
+            }
+          } else {
+            list = list.filter((i) => i.item_code !== 'SUBCONTRACT_MANAGEMENT' && i.item_code !== 'PRIMARY_SUBCONTRACTS' && !String(i.item_name || '').toLowerCase().includes('subcontract') && !String(i.item_name || '').toLowerCase().includes('sub work'));
+          }
+
+          // Ensure Labour & Attendance explicitly includes Daily Wage Entry
+          const labourNode = list.find((i) =>
+            i.item_code === 'LABOUR' ||
+            i.item_code === 'LABOUR_ATTENDANCE' ||
+            String(i.item_name || '').toLowerCase().includes('labour')
+          );
+          if (labourNode && Array.isArray(labourNode.children)) {
+            const hasDailyWages = labourNode.children.some((c) =>
+              c.route_path === '/labour/wages' || c.item_code === 'DAILY_WAGES'
+            );
+            if (!hasDailyWages) {
+              // Insert after attendance items or at the end
+              const attIdx = labourNode.children.findIndex((c) =>
+                c.route_path === '/labour/attendance' || c.item_code === 'DAILY_ATTENDANCE'
+              );
+              const wageItem = {
+                item_code: 'DAILY_WAGES',
+                item_name: 'Daily Wage Entry',
+                route_path: '/labour/wages',
+                icon_key: 'coins',
+              };
+              if (attIdx !== -1) {
+                labourNode.children.splice(attIdx + 1, 0, wageItem);
+              } else {
+                labourNode.children.push(wageItem);
+              }
+            }
+          }
+
+          // 8. Add Module Settings under Administration
+          const adminNode = list.find((i) => i.item_code === 'ADMINISTRATION' || String(i.item_name || '').toLowerCase().includes('admin'));
+          if (adminNode && adminNode.children) {
+            const hasModSettings = adminNode.children.some((c) => c.route_path === '/administration/modules');
+            if (!hasModSettings) {
+              adminNode.children.push({
+                item_code: 'ADMIN_MODULE_SETTINGS',
+                item_name: 'Module Settings',
+                route_path: '/administration/modules',
+                icon_key: 'sliders-horizontal',
+              });
+            }
+          }
+
+          // Final filter pass
+          list = list.filter((item) => isModuleEnabled(item.item_code));
 
           setNavigation(list);
         }
@@ -948,7 +1043,7 @@ export function Sidebar({ isMobileOpen, onCloseMobile }) {
         if (active) setError(requestError.message || 'Navigation could not be loaded.');
       });
     return () => { active = false; };
-  }, []);
+  }, [isModuleEnabled, navVersion]);
 
   useEffect(() => {
     if (!navigation.length) return;

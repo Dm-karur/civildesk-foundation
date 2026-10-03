@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Calendar, CheckCircle2, XCircle, Clock, Users, IndianRupee,
   Search, Filter, Eye, Edit, Trash2, Plus, ArrowLeft, ArrowRight,
-  Sun, Moon, ShieldCheck, Check, AlertCircle, Sparkles, Send, RefreshCw, Lock
+  Sun, Moon, ShieldCheck, Check, AlertCircle, Sparkles, Send, RefreshCw, Lock,
+  Coins, FileSpreadsheet
 } from 'lucide-react';
 import { PageHeader } from '../../../components/layout/PageHeader';
 import { PageContainer } from '../../../components/layout/PageContainer';
@@ -23,6 +25,7 @@ import { attendanceApi, labourApi, projectsApi, sitesApi } from '../../../api/ap
 import { useAuth } from '../../auth/context/AuthContext';
 
 export function DailyAttendancePage() {
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
   
   // Date & Scope Selection
@@ -419,6 +422,28 @@ export function DailyAttendancePage() {
           { label: 'Labour & Attendance' },
           { label: 'Daily Attendance' }
         ]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/labour/wages${selectedSiteId ? `?site_id=${selectedSiteId}` : ''}`)}
+              className="text-xs gap-1.5 h-8 font-semibold text-blue-700 border-blue-200 hover:bg-blue-50"
+            >
+              <Coins className="w-3.5 h-3.5" />
+              Daily Wage Entry
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/subcontracts/weekly-payments${selectedSiteId ? `?site_id=${selectedSiteId}` : ''}`)}
+              className="text-xs gap-1.5 h-8 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              Weekly Slips
+            </Button>
+          </div>
+        }
       />
 
       {/* KPI Cards */}
