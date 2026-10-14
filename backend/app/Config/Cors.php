@@ -27,7 +27,9 @@ class Cors extends BaseConfig
     public array $default = [
 		'allowedOrigins' => [
 			'http://localhost:5173',
+            'https://erp.ksconstruction.co.in',
             'https://white-marten-572750.hostingersite.com',
+            'https://foundation.civildesk.in',
 		],
 
 		'allowedOriginsPatterns' => [],

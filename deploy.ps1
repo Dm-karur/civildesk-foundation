@@ -132,9 +132,9 @@ if ($Deploy -or $RunSql) {
         scp -P $Port -o StrictHostKeyChecking=no $SqlFile "$User@${HostName}:sub_work_schema.sql"
 
         Write-Host "Executing SQL schema on remote database..." -ForegroundColor Cyan
-        $DbUser = "u589483802_CDfoundation"
-        $DbPass = "CDfoundation@123"
-        $DbName = "u589483802_CDfoundation"
+        $DbUser = "u772531024_ksconstudtion"
+        $DbPass = "Ksconstudtion@2026"
+        $DbName = "u772531024_ksconstudtion"
         $SqlCmd = "mysql -u $DbUser -p'$DbPass' $DbName < sub_work_schema.sql"
         $SqlResult = Execute-RemoteCommand "$SqlCmd && rm -f sub_work_schema.sql && echo 'SQL Execution Completed Successfully!'"
         Write-Host $SqlResult

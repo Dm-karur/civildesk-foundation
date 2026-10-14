@@ -5,9 +5,9 @@ ini_set('display_errors', 1);
 
 // Database credentials
 $hostname = 'localhost';
-$username = 'u589483802_civilpro';
-$password = 'Civilpro@123#';
-$database = 'u589483802_civilpro';
+$username = 'u772531024_ksconstudtion';
+$password = 'Ksconstudtion@2026';
+$database = 'u772531024_ksconstudtion';
 $port = 3306;
 
 echo "<h2>Database Connection Test</h2>";

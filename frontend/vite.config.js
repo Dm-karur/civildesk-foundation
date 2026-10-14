@@ -21,7 +21,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://foundation.civildesk.in/backend/public',
+        target: 'https://erp.ksconstruction.co.in/backend/public',
         changeOrigin: true,
         secure: false,
       },
