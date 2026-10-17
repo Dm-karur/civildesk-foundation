@@ -566,32 +566,33 @@ export function SiteLabourTab({ site }) {
       </div>
 
       {/* Sub-View Navigation Switcher */}
-      <div className="flex items-center justify-between border-b border-border pb-1">
-        <div className="flex space-x-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-border pb-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto">
           <button
             type="button"
             onClick={() => setActiveSubTab('wages')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-lg transition-all flex-shrink-0 ${
               activeSubTab === 'wages'
                 ? 'bg-primary text-white shadow-sm'
                 : 'bg-surface border border-border text-text-secondary hover:text-text-primary'
             }`}
           >
             <Coins className="w-4 h-4" />
-            Daily Wage Entry (Subcontractor Trade Gangs)
+            <span>Daily Wage Entry</span>
+            <span className="hidden sm:inline">(Subcontractor Trade Gangs)</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveSubTab('muster')}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-lg transition-all flex-shrink-0 ${
               activeSubTab === 'muster'
                 ? 'bg-primary text-white shadow-sm'
                 : 'bg-surface border border-border text-text-secondary hover:text-text-primary'
             }`}
           >
             <Users className="w-4 h-4" />
-            Direct Workforce Muster Roll ({workers.length})
+            <span>Muster Roll ({workers.length})</span>
           </button>
         </div>
 
@@ -600,7 +601,7 @@ export function SiteLabourTab({ site }) {
             variant="primary"
             size="sm"
             onClick={handleOpenDeploy}
-            className="text-xs gap-1.5 h-8 font-semibold"
+            className="text-xs gap-1.5 h-8 font-semibold w-full sm:w-auto justify-center"
           >
             <UserPlus className="w-3.5 h-3.5" />
             Deploy Worker
@@ -616,9 +617,9 @@ export function SiteLabourTab({ site }) {
           {/* Wage Entry Card */}
           <div className="bg-surface rounded-xl border border-border shadow-xs overflow-hidden">
             {/* Header */}
-            <div className="p-4 sm:p-5 border-b border-border bg-primary/5 flex flex-wrap items-center justify-between gap-3">
+            <div className="p-4 sm:p-5 border-b border-border bg-primary/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-surface flex items-center justify-center text-primary shadow-xs border border-border font-bold">
+                <div className="w-9 h-9 rounded-lg bg-surface flex items-center justify-center text-primary shadow-xs border border-border font-bold flex-shrink-0">
                   <FileText className="w-4.5 h-4.5" />
                 </div>
                 <div>
@@ -633,7 +634,7 @@ export function SiteLabourTab({ site }) {
               </div>
 
               {selectedSubcontractorId && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                   <Badge variant="success" className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1.5 px-3 py-1 font-bold text-xs">
                     <Tag className="w-3 h-3" />
                     {templates.length} Trade Rates Auto-Applied
@@ -645,14 +646,14 @@ export function SiteLabourTab({ site }) {
                     className="text-xs h-7 gap-1 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50"
                   >
                     <FileSpreadsheet className="w-3 h-3" />
-                    Go to Weekly Slip
+                    Weekly Slip
                   </Button>
                 </div>
               )}
             </div>
 
             {/* Entry Form */}
-            <form onSubmit={handleSubmitDailyWages} className="p-4 sm:p-6 space-y-6">
+            <form onSubmit={handleSubmitDailyWages} className="p-4 sm:p-6 space-y-5">
               {/* Selectors */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 <FormField label="SELECT SUBCONTRACTOR" required>
@@ -678,30 +679,33 @@ export function SiteLabourTab({ site }) {
                       type="date"
                       value={wageDate}
                       onChange={(e) => setWageDate(e.target.value)}
-                      className="w-full pl-9 h-10 text-xs font-medium"
+                      className="w-full h-10 text-xs font-medium"
                     />
-                    <Calendar className="w-4 h-4 text-text-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
                 </FormField>
               </div>
 
               {/* Trade Banner */}
               {selectedSubcontractorId && (
-                <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 text-xs text-primary font-medium">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Contractor: <strong className="text-text-primary">{selectedSub?.contractor_name}</strong></span>
-                    <span>•</span>
-                    <span>Trade: <strong className="text-text-primary">{selectedSub?.subcontractor_type_label || selectedSub?.contractor_type_name || 'Trade Gang'}</strong></span>
-                    <span>•</span>
-                    <span>{templates.length} Trade Items loaded automatically</span>
+                <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-primary font-medium">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5 font-bold text-text-primary">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <span>Contractor: <strong>{selectedSub?.contractor_name}</strong></span>
+                    </div>
+                    <span className="text-text-muted hidden sm:inline">•</span>
+                    <span className="text-text-secondary">Trade: <strong className="text-text-primary">{selectedSub?.subcontractor_type_label || selectedSub?.contractor_type_name || 'Trade Gang'}</strong></span>
+                    <span className="text-text-muted hidden sm:inline">•</span>
+                    <Badge variant="neutral" className="text-[10px] font-semibold">
+                      {templates.length} Trade Items loaded
+                    </Badge>
                   </div>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={handleAddCustomItem}
-                    className="h-7 text-xs gap-1 font-semibold"
+                    className="h-8 text-xs gap-1 font-semibold w-full sm:w-auto justify-center"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     + Add Custom Item
@@ -709,27 +713,27 @@ export function SiteLabourTab({ site }) {
                 </div>
               )}
 
-              {/* Template Items Table */}
+              {/* Template Items (Mobile Cards & Desktop Table) */}
               {selectedSubcontractorId ? (
-                <div className="space-y-3 pt-2">
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="space-y-3 pt-1">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                     <div className="w-full sm:w-72">
                       <SearchField
                         placeholder="Search trade (Mason, Helper)..."
                         value={itemSearch}
                         onChange={(e) => setItemSearch(e.target.value)}
-                        className="h-8 text-xs"
+                        className="h-9 sm:h-8 text-xs"
                       />
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-text-muted font-medium">Filter:</span>
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+                      <span className="text-[11px] text-text-muted font-bold uppercase tracking-wider flex-shrink-0">Filter:</span>
                       {['All', 'Manpower', 'Equipment', 'Expense'].map(cat => (
                         <button
                           key={cat}
                           type="button"
                           onClick={() => setItemFilter(cat)}
-                          className={`px-2 py-0.5 text-xs rounded font-medium transition-colors ${
-                            itemFilter === cat ? 'bg-primary text-white font-bold' : 'bg-surface-muted text-text-secondary hover:bg-surface-muted/80'
+                          className={`px-2.5 py-1 text-xs rounded-lg font-medium transition-colors flex-shrink-0 ${
+                            itemFilter === cat ? 'bg-primary text-white font-bold shadow-xs' : 'bg-surface-muted text-text-secondary hover:bg-surface-muted/80'
                           }`}
                         >
                           {cat}
@@ -738,19 +742,194 @@ export function SiteLabourTab({ site }) {
                     </div>
                   </div>
 
-                  <div className="border border-border rounded-lg overflow-x-auto shadow-xs">
-                    <table className="w-full text-left text-xs table-fixed">
+                  {/* ───────────────────────────────────────────────────────── */}
+                  {/* MOBILE VIEW (< md) - Touch Friendly Cards with Steppers   */}
+                  {/* ───────────────────────────────────────────────────────── */}
+                  <div className="md:hidden space-y-3">
+                    {loadingTemplates ? (
+                      <div className="py-8 text-center text-text-muted bg-surface-muted/20 rounded-xl border border-border">
+                        <div className="inline-flex items-center gap-2 text-xs font-medium">
+                          <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                          Loading contractor trade templates...
+                        </div>
+                      </div>
+                    ) : filteredTemplates.length === 0 ? (
+                      <div className="py-8 text-center text-text-muted bg-surface-muted/30 rounded-xl border border-dashed border-border p-4 text-xs">
+                        No items found. Tap "+ Add Custom Item" to insert a custom trade line.
+                      </div>
+                    ) : (
+                      filteredTemplates.map((t, idx) => {
+                        const qty = Number(wageEntries[t.id] || 0);
+                        const rate = Number(wageRates[t.id] !== undefined ? wageRates[t.id] : (t.default_rate || 0));
+                        const amount = qty * rate;
+                        const isExpense = t.classification === 'Expense' || t.classification === 'Expenses';
+                        const isEquipment = t.classification === 'Equipment';
+                        const isFilled = qty > 0;
+
+                        return (
+                          <div
+                            key={t.id}
+                            className={`rounded-xl border transition-all p-3.5 space-y-3 ${
+                              isFilled
+                                ? 'bg-primary/[0.03] border-primary/50 shadow-xs ring-1 ring-primary/20'
+                                : 'bg-surface border-border shadow-xs'
+                            }`}
+                          >
+                            {/* Top row: #, Trade Title, Classification Badge, Unit, Delete */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-surface-muted text-text-secondary text-[11px] font-bold flex items-center justify-center border border-border mt-0.5">
+                                  {idx + 1}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  {t.isCustom ? (
+                                    <Input
+                                      value={t.item_name}
+                                      onChange={(e) => handleCustomItemChange(t.id, 'item_name', e.target.value)}
+                                      className="h-8 text-xs font-bold w-full"
+                                      placeholder="Custom Trade Name"
+                                    />
+                                  ) : (
+                                    <h4 className="text-sm font-bold text-text-primary leading-tight">
+                                      {t.item_name || t.description}
+                                    </h4>
+                                  )}
+                                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                    <Badge className={`text-[9px] uppercase font-bold py-0.5 px-2 ${
+                                      isExpense ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                      isEquipment ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                      'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                    }`}>
+                                      {t.classification}
+                                    </Badge>
+                                    <span className="text-[11px] text-text-muted font-medium">
+                                      Unit: <strong className="text-text-secondary">{t.uom || t.unit || 'shift'}</strong>
+                                    </span>
+                                    {isFilled && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                        Active
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {t.isCustom && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItem(t.id, true)}
+                                  className="p-1.5 text-text-muted hover:text-red-600 rounded-lg bg-surface-muted transition-colors flex-shrink-0"
+                                  title="Remove Custom Item"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Stepper + Rate Inputs */}
+                            <div className="grid grid-cols-2 gap-3 pt-1">
+                              {/* Shifts / Workers Stepper */}
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">
+                                  Shifts / Workers
+                                </label>
+                                <div className="flex items-center rounded-lg border border-border bg-surface overflow-hidden h-9 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary shadow-xs">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const current = Number(wageEntries[t.id] || 0);
+                                      const next = Math.max(0, current - 0.5);
+                                      setWageEntries(prev => ({ ...prev, [t.id]: next === 0 ? '' : String(next) }));
+                                    }}
+                                    className="w-9 h-full flex items-center justify-center text-text-secondary hover:bg-surface-muted active:bg-border transition-colors font-bold text-lg select-none"
+                                    aria-label="Decrease shifts"
+                                  >
+                                    −
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.5"
+                                    placeholder="0"
+                                    value={wageEntries[t.id] || ''}
+                                    onChange={(e) => setWageEntries(prev => ({ ...prev, [t.id]: e.target.value }))}
+                                    className="w-full h-full text-center font-bold text-sm bg-transparent outline-none p-0 text-text-primary"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const current = Number(wageEntries[t.id] || 0);
+                                      const next = current + 0.5;
+                                      setWageEntries(prev => ({ ...prev, [t.id]: String(next) }));
+                                    }}
+                                    className="w-9 h-full flex items-center justify-center text-text-secondary hover:bg-surface-muted active:bg-border transition-colors font-bold text-lg select-none"
+                                    aria-label="Increase shifts"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Rate (₹) */}
+                              <div className="space-y-1">
+                                <label className="text-[10px] font-bold uppercase tracking-wider text-text-muted block">
+                                  Rate (₹)
+                                </label>
+                                <div className="relative">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted text-xs font-semibold">₹</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.5"
+                                    value={wageRates[t.id] !== undefined ? wageRates[t.id] : (t.default_rate || '')}
+                                    onChange={(e) => setWageRates(prev => ({ ...prev, [t.id]: e.target.value }))}
+                                    className="w-full h-9 pl-6 pr-2.5 text-right font-bold text-sm rounded-lg border border-border bg-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary text-text-primary shadow-xs"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Amount Badge & Remarks */}
+                            <div className="pt-2 border-t border-border/60 flex items-center justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <input
+                                  type="text"
+                                  value={wageRemarks[t.id] || ''}
+                                  onChange={(e) => setWageRemarks(prev => ({ ...prev, [t.id]: e.target.value }))}
+                                  placeholder="Remarks (optional)..."
+                                  className="w-full h-7 text-xs bg-surface-muted/50 border border-border/60 rounded px-2 text-text-primary placeholder:text-text-muted outline-none focus:border-primary"
+                                />
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <span className="text-[10px] text-text-muted block leading-none">Subtotal</span>
+                                <span className="text-sm font-black text-emerald-600 font-mono">
+                                  ₹{amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* ───────────────────────────────────────────────────────── */}
+                  {/* DESKTOP TABLE VIEW (>= md)                                */}
+                  {/* ───────────────────────────────────────────────────────── */}
+                  <div className="hidden md:block border border-border rounded-lg overflow-x-auto shadow-xs">
+                    <table className="w-full text-left text-xs min-w-[760px]">
                       <thead className="bg-surface-muted text-text-secondary text-[10px] uppercase font-bold border-b border-border tracking-wider">
                         <tr>
-                          <th className="px-2 py-2.5 w-10 text-center">#</th>
-                          <th className="px-3 py-2.5 w-[24%]">Trade / Item Description</th>
-                          <th className="px-2 py-2.5 w-[12%] text-center">Classification</th>
-                          <th className="px-2 py-2.5 w-[8%] text-center">Unit</th>
-                          <th className="px-2 py-2.5 w-[14%] text-center">Shifts / Workers</th>
-                          <th className="px-2 py-2.5 w-[14%] text-center">Rate (₹)</th>
-                          <th className="px-2 py-2.5 w-[14%] text-right pr-4">Amount (₹)</th>
-                          <th className="px-2 py-2.5 w-[14%]">Remarks</th>
-                          <th className="px-2 py-2.5 w-8 text-center"></th>
+                          <th className="px-3 py-2.5 w-12 text-center">#</th>
+                          <th className="px-3 py-2.5 min-w-[180px]">Trade / Item Description</th>
+                          <th className="px-2 py-2.5 w-28 text-center">Classification</th>
+                          <th className="px-2 py-2.5 w-16 text-center">Unit</th>
+                          <th className="px-2 py-2.5 w-28 text-center">Shifts / Workers</th>
+                          <th className="px-2 py-2.5 w-28 text-center">Rate (₹)</th>
+                          <th className="px-3 py-2.5 w-32 text-right">Amount (₹)</th>
+                          <th className="px-3 py-2.5 min-w-[140px]">Remarks</th>
+                          <th className="px-2 py-2.5 w-10 text-center"></th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border bg-surface">
@@ -779,7 +958,7 @@ export function SiteLabourTab({ site }) {
 
                             return (
                               <tr key={t.id} className="hover:bg-primary/5 transition-colors">
-                                <td className="px-2 py-2 text-center font-medium text-text-secondary">{idx + 1}</td>
+                                <td className="px-3 py-2 text-center font-medium text-text-secondary">{idx + 1}</td>
                                 <td className="px-3 py-2 font-bold text-text-primary text-[12px]">
                                   {t.isCustom ? (
                                     <Input
@@ -823,10 +1002,10 @@ export function SiteLabourTab({ site }) {
                                     onChange={(e) => setWageRates(prev => ({ ...prev, [t.id]: e.target.value }))}
                                   />
                                 </td>
-                                <td className="px-2 py-2 text-right pr-4 font-bold text-text-primary text-xs">
+                                <td className="px-3 py-2 text-right font-bold text-text-primary text-xs">
                                   ₹{amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
-                                <td className="px-2 py-2">
+                                <td className="px-3 py-2">
                                   <Input
                                     className="h-8 text-xs"
                                     placeholder="Remarks..."
@@ -864,28 +1043,33 @@ export function SiteLabourTab({ site }) {
 
               {/* Bottom Summary & Actions */}
               {selectedSubcontractorId && (
-                <div className="pt-4 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface-muted/30 p-4 rounded-xl">
-                  <div className="flex items-center gap-6">
-                    <div>
-                      <span className="text-[11px] text-text-muted uppercase font-bold tracking-wider">Total Shifts / Man-days</span>
-                      <div className="text-xl font-black text-text-primary font-mono">{totalShifts}</div>
+                <div className="pt-4 border-t border-border space-y-3 bg-surface-muted/40 p-4 rounded-xl">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-surface rounded-lg p-3 border border-border/80">
+                      <span className="text-[10px] sm:text-[11px] text-text-muted uppercase font-bold tracking-wider block">
+                        Total Shifts / Days
+                      </span>
+                      <div className="text-lg sm:text-xl font-black text-text-primary font-mono mt-0.5">
+                        {totalShifts}
+                      </div>
                     </div>
-                    <div className="h-8 w-px bg-border" />
-                    <div>
-                      <span className="text-[11px] text-text-muted uppercase font-bold tracking-wider">Total Daily Wages</span>
-                      <div className="text-xl font-black text-emerald-600 font-mono">
+                    <div className="bg-surface rounded-lg p-3 border border-border/80">
+                      <span className="text-[10px] sm:text-[11px] text-text-muted uppercase font-bold tracking-wider block">
+                        Total Daily Wages
+                      </span>
+                      <div className="text-lg sm:text-xl font-black text-emerald-600 font-mono mt-0.5">
                         ₹{totalWages.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-1">
                     <Button
                       type="button"
                       variant="outline"
                       size="md"
                       onClick={() => navigate(`/subcontracts/weekly-payments?site_id=${site.id}&contractor_id=${selectedSubcontractorId}`)}
-                      className="gap-1.5 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50 text-xs"
+                      className="gap-1.5 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50 text-xs h-10 sm:h-9 justify-center"
                     >
                       <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                       Weekly Slip
@@ -895,7 +1079,7 @@ export function SiteLabourTab({ site }) {
                       variant="primary"
                       size="md"
                       disabled={submittingWages || filledItemsCount === 0}
-                      className="gap-2 font-bold px-6 text-xs shadow-sm"
+                      className="gap-2 font-bold px-6 text-xs shadow-sm h-11 sm:h-9 justify-center"
                     >
                       {submittingWages ? (
                         <>
@@ -905,7 +1089,7 @@ export function SiteLabourTab({ site }) {
                       ) : (
                         <>
                           <Save className="w-4 h-4" />
-                          Log Daily Wages
+                          Log Daily Wages ({filledItemsCount})
                         </>
                       )}
                     </Button>
@@ -917,7 +1101,7 @@ export function SiteLabourTab({ site }) {
 
           {/* Recent Daily Wage Logs for this Site */}
           <div className="bg-surface rounded-xl border border-border p-4 sm:p-5 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
               <div>
                 <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
                   Recent Daily Wage Registers for {site.site_name}
@@ -929,7 +1113,7 @@ export function SiteLabourTab({ site }) {
                 variant="outline"
                 size="sm"
                 onClick={() => navigate(`/subcontracts/weekly-payments?site_id=${site.id}`)}
-                className="text-xs gap-1.5 font-medium text-emerald-700 border-emerald-200"
+                className="text-xs gap-1.5 font-medium text-emerald-700 border-emerald-200 w-full sm:w-auto justify-center h-8"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 Go to All Weekly Slips
@@ -945,77 +1129,146 @@ export function SiteLabourTab({ site }) {
                 No daily wage registers recorded for this site yet.
               </div>
             ) : (
-              <div className="border border-border rounded-lg overflow-x-auto shadow-xs">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-surface-muted text-text-secondary border-b border-border uppercase text-[10px] font-bold tracking-wider">
-                    <tr>
-                      <th className="py-2.5 px-3">Date</th>
-                      <th className="py-2.5 px-3">Register #</th>
-                      <th className="py-2.5 px-3">Subcontractor</th>
-                      <th className="py-2.5 px-3 text-center">Shifts / Mandays</th>
-                      <th className="py-2.5 px-3 text-right">Total Amount (₹)</th>
-                      <th className="py-2.5 px-3 text-center">Status</th>
-                      <th className="py-2.5 px-3 text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border bg-surface">
-                    {recentWageLogs.slice(0, 10).map((log) => (
-                      <tr key={log.id} className="hover:bg-primary/5 transition-colors">
-                        <td className="py-2.5 px-3 font-bold text-text-primary">
-                          {log.wage_date}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono font-medium text-text-secondary">
-                          {log.voucher_no || log.register_no || `DWR-${log.id}`}
-                        </td>
-                        <td className="py-2.5 px-3 font-medium text-text-primary">
-                          {log.contractor_name}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-bold text-text-primary font-mono">
-                          {Number(log.total_shifts_count || log.total_mandays || 0)}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-emerald-700 font-mono">
-                          ₹{Number(log.total_amount || log.total_wage_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
+              <>
+                {/* Mobile View for Recent Registers (< md) */}
+                <div className="md:hidden space-y-2.5">
+                  {recentWageLogs.slice(0, 10).map((log) => {
+                    const subId = log.subcontractor_id || log.contractor_id;
+                    return (
+                      <div key={log.id} className="bg-surface border border-border rounded-xl p-3.5 space-y-2.5 shadow-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-text-primary">{log.wage_date}</span>
+                            <span className="text-[10px] font-mono font-medium text-text-secondary bg-surface-muted px-1.5 py-0.5 rounded">
+                              {log.voucher_no || log.register_no || `DWR-${log.id}`}
+                            </span>
+                          </div>
                           <Badge variant="success" className="text-[10px] uppercase font-bold">
                             {log.status || 'SUBMITTED'}
                           </Badge>
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <Button
-                              variant="outline"
-                              size="xs"
-                              onClick={() => {
-                                const subId = log.subcontractor_id || log.contractor_id;
-                                navigate(`/subcontracts/weekly-payments?site_id=${site.id}&contractor_id=${subId}&date=${log.wage_date}`);
-                              }}
-                              className="text-[11px] gap-1 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50 h-6 px-2"
-                              title="Go to Weekly Slip"
-                            >
-                              <FileSpreadsheet className="w-3 h-3 text-emerald-600" />
-                              Weekly Slip
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              onClick={() => {
-                                const subId = log.subcontractor_id || log.contractor_id;
-                                navigate(`/subcontracts/weekly-payments/new?site_id=${site.id}&contractor_id=${subId}&date=${log.wage_date}`);
-                              }}
-                              className="text-[11px] gap-1 font-medium h-6 px-2 text-text-secondary"
-                              title="Generate Maistry Payment Slip"
-                            >
-                              <Printer className="w-3 h-3" />
-                              Slip
-                            </Button>
+                        </div>
+
+                        <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
+                          <div>
+                            <span className="text-[10px] text-text-muted block">Contractor</span>
+                            <span className="font-semibold text-text-primary">{log.contractor_name}</span>
                           </div>
-                        </td>
+                          <div className="text-center">
+                            <span className="text-[10px] text-text-muted block">Shifts</span>
+                            <span className="font-bold text-text-primary font-mono">
+                              {Number(log.total_shifts_count || log.total_mandays || 0)}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-text-muted block">Total Amount</span>
+                            <span className="font-bold text-emerald-700 font-mono">
+                              ₹{Number(log.total_amount || log.total_wage_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/50">
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            onClick={() => {
+                              navigate(`/subcontracts/weekly-payments?site_id=${site.id}&contractor_id=${subId}&date=${log.wage_date}`);
+                            }}
+                            className="text-[11px] gap-1 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50 h-7 px-3"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                            Weekly Slip
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => {
+                              navigate(`/subcontracts/weekly-payments/new?site_id=${site.id}&contractor_id=${subId}&date=${log.wage_date}`);
+                            }}
+                            className="text-[11px] gap-1 font-medium h-7 px-2.5 text-text-secondary"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            Slip
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop View (>= md) */}
+                <div className="hidden md:block border border-border rounded-lg overflow-x-auto shadow-xs">
+                  <table className="w-full text-left text-xs border-collapse min-w-[650px]">
+                    <thead className="bg-surface-muted text-text-secondary border-b border-border uppercase text-[10px] font-bold tracking-wider">
+                      <tr>
+                        <th className="py-2.5 px-3">Date</th>
+                        <th className="py-2.5 px-3">Register #</th>
+                        <th className="py-2.5 px-3">Subcontractor</th>
+                        <th className="py-2.5 px-3 text-center">Shifts / Mandays</th>
+                        <th className="py-2.5 px-3 text-right">Total Amount (₹)</th>
+                        <th className="py-2.5 px-3 text-center">Status</th>
+                        <th className="py-2.5 px-3 text-center">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-border bg-surface">
+                      {recentWageLogs.slice(0, 10).map((log) => (
+                        <tr key={log.id} className="hover:bg-primary/5 transition-colors">
+                          <td className="py-2.5 px-3 font-bold text-text-primary">
+                            {log.wage_date}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono font-medium text-text-secondary">
+                            {log.voucher_no || log.register_no || `DWR-${log.id}`}
+                          </td>
+                          <td className="py-2.5 px-3 font-medium text-text-primary">
+                            {log.contractor_name}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-bold text-text-primary font-mono">
+                            {Number(log.total_shifts_count || log.total_mandays || 0)}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-bold text-emerald-700 font-mono">
+                            ₹{Number(log.total_amount || log.total_wage_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <Badge variant="success" className="text-[10px] uppercase font-bold">
+                              {log.status || 'SUBMITTED'}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="xs"
+                                onClick={() => {
+                                  const subId = log.subcontractor_id || log.contractor_id;
+                                  navigate(`/subcontracts/weekly-payments?site_id=${site.id}&contractor_id=${subId}&date=${log.wage_date}`);
+                                }}
+                                className="text-[11px] gap-1 font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50 h-6 px-2"
+                                title="Go to Weekly Slip"
+                              >
+                                <FileSpreadsheet className="w-3 h-3 text-emerald-600" />
+                                Weekly Slip
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                onClick={() => {
+                                  const subId = log.subcontractor_id || log.contractor_id;
+                                  navigate(`/subcontracts/weekly-payments/new?site_id=${site.id}&contractor_id=${subId}&date=${log.wage_date}`);
+                                }}
+                                className="text-[11px] gap-1 font-medium h-6 px-2 text-text-secondary"
+                                title="Generate Maistry Payment Slip"
+                              >
+                                <Printer className="w-3 h-3" />
+                                Slip
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -1114,60 +1367,111 @@ export function SiteLabourTab({ site }) {
                 <p className="text-xs">No direct workers found matching your filters.</p>
               </div>
             ) : (
-              <div className="border border-border rounded-lg overflow-x-auto shadow-xs">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-surface-muted text-text-secondary border-b border-border uppercase text-[10px] font-bold tracking-wider">
-                    <tr>
-                      <th className="py-2.5 px-3">Worker Code</th>
-                      <th className="py-2.5 px-3">Worker Name</th>
-                      <th className="py-2.5 px-3">Trade</th>
-                      <th className="py-2.5 px-3">Skill Level</th>
-                      <th className="py-2.5 px-3">Employment Type</th>
-                      <th className="py-2.5 px-3 text-right">Daily Wage (₹)</th>
-                      <th className="py-2.5 px-3">Phone</th>
-                      <th className="py-2.5 px-3 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border bg-surface">
-                    {filteredWorkers.map(w => (
-                      <tr key={w.id} className="hover:bg-primary/5 transition-colors">
-                        <td className="py-2.5 px-3 font-mono font-semibold text-text-primary whitespace-nowrap">
-                          {w.worker_code}
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-text-primary">
-                          {w.first_name} {w.last_name}
-                        </td>
-                        <td className="py-2.5 px-3 font-medium text-text-primary">
-                          {w.trade_name || w.trade || 'General Worker'}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
+              <>
+                {/* Mobile View for Deployed Workforce (< md) */}
+                <div className="md:hidden space-y-2.5">
+                  {filteredWorkers.map(w => (
+                    <div key={w.id} className="bg-surface border border-border rounded-xl p-3.5 space-y-2 shadow-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-bold text-text-primary">
+                            {w.first_name} {w.last_name}
+                          </div>
+                          <span className="text-[10px] font-mono text-text-muted">
+                            {w.worker_code}
+                          </span>
+                        </div>
+                        <Badge variant="success" className="text-[10px] uppercase font-semibold">
+                          {w.status || 'Active'}
+                        </Badge>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-border/50">
+                        <div>
+                          <span className="text-[10px] text-text-muted block">Trade & Skill</span>
+                          <span className="font-semibold text-text-primary">{w.trade_name || w.trade || 'Worker'}</span>
+                          <span className={`ml-1.5 inline-block text-[9px] px-1.5 py-0.2 rounded border ${
                             String(w.skill_level || '').toLowerCase().includes('skilled')
                               ? 'bg-blue-50 text-blue-700 border-blue-200'
                               : 'bg-slate-100 text-slate-700 border-slate-200'
                           }`}>
                             {w.skill_level || 'Skilled'}
                           </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-text-secondary text-[11px]">
-                          {w.employment_type || 'Direct Labour'}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-bold text-text-primary font-mono">
-                          ₹{parseFloat(w.daily_wage || 0).toLocaleString('en-IN')}
-                        </td>
-                        <td className="py-2.5 px-3 text-text-muted font-mono text-[11px]">
-                          {w.phone || '-'}
-                        </td>
-                        <td className="py-2.5 px-3 text-center">
-                          <Badge variant="success" className="text-[10px] uppercase font-semibold">
-                            {w.status || 'Active'}
-                          </Badge>
-                        </td>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-text-muted block">Daily Wage</span>
+                          <span className="font-bold text-primary font-mono text-sm">
+                            ₹{parseFloat(w.daily_wage || 0).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </div>
+
+                      {w.phone && (
+                        <div className="text-[11px] text-text-muted pt-1 border-t border-border/40 flex items-center justify-between">
+                          <span>Phone: <span className="font-mono text-text-secondary">{w.phone}</span></span>
+                          <span className="text-[10px] text-text-muted">{w.employment_type || 'Direct'}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop View for Deployed Workforce (>= md) */}
+                <div className="hidden md:block border border-border rounded-lg overflow-x-auto shadow-xs">
+                  <table className="w-full text-left text-xs border-collapse min-w-[700px]">
+                    <thead className="bg-surface-muted text-text-secondary border-b border-border uppercase text-[10px] font-bold tracking-wider">
+                      <tr>
+                        <th className="py-2.5 px-3">Worker Code</th>
+                        <th className="py-2.5 px-3">Worker Name</th>
+                        <th className="py-2.5 px-3">Trade</th>
+                        <th className="py-2.5 px-3">Skill Level</th>
+                        <th className="py-2.5 px-3">Employment Type</th>
+                        <th className="py-2.5 px-3 text-right">Daily Wage (₹)</th>
+                        <th className="py-2.5 px-3">Phone</th>
+                        <th className="py-2.5 px-3 text-center">Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-border bg-surface">
+                      {filteredWorkers.map(w => (
+                        <tr key={w.id} className="hover:bg-primary/5 transition-colors">
+                          <td className="py-2.5 px-3 font-mono font-semibold text-text-primary whitespace-nowrap">
+                            {w.worker_code}
+                          </td>
+                          <td className="py-2.5 px-3 font-bold text-text-primary">
+                            {w.first_name} {w.last_name}
+                          </td>
+                          <td className="py-2.5 px-3 font-medium text-text-primary">
+                            {w.trade_name || w.trade || 'General Worker'}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                              String(w.skill_level || '').toLowerCase().includes('skilled')
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}>
+                              {w.skill_level || 'Skilled'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-text-secondary text-[11px]">
+                            {w.employment_type || 'Direct Labour'}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-bold text-text-primary font-mono">
+                            ₹{parseFloat(w.daily_wage || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-2.5 px-3 text-text-muted font-mono text-[11px]">
+                            {w.phone || '-'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <Badge variant="success" className="text-[10px] uppercase font-semibold">
+                              {w.status || 'Active'}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </div>
