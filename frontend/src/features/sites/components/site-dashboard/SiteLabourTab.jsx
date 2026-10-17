@@ -90,6 +90,16 @@ export function SiteLabourTab({ site }) {
   const [itemFilter, setItemFilter] = useState('All');
   const [submittingWages, setSubmittingWages] = useState(false);
 
+  // Quick Add Subcontractor Modal State
+  const [isAddSubModalOpen, setIsAddSubModalOpen] = useState(false);
+  const [newSubForm, setNewSubForm] = useState({
+    contractor_name: '',
+    trade: 'Mason',
+    phone: '',
+    contact_person: '',
+  });
+  const [savingNewSub, setSavingNewSub] = useState(false);
+
   // Daily Wage History for this Site
   const [recentWageLogs, setRecentWageLogs] = useState([]);
   const [loadingWageLogs, setLoadingWageLogs] = useState(false);
@@ -127,21 +137,117 @@ export function SiteLabourTab({ site }) {
     loadSiteWorkers();
   }, [site?.id]);
 
-  // Load subcontractors for this site
+  // Load ALL subcontractors (API + Setup + LocalStorage sync)
   const loadSubcontractors = async () => {
     try {
-      const res = await subcontractsApi.contractors.list({ site_id: site.id }).catch(() => null);
-      let list = extractArray(res);
-      if (!list || list.length === 0) {
-        const setupRes = await dailyWagesApi.setup({ site_id: site.id }).catch(() => null);
-        list = setupRes?.data?.setup?.subcontractors || [];
+      const combined = [];
+
+      // 1. Fetch from subcontracts contractors API
+      const res = await subcontractsApi.contractors.list().catch(() => null);
+      const list = extractArray(res);
+      if (Array.isArray(list) && list.length > 0) {
+        combined.push(...list);
       }
-      setSubcontractors(list);
-      if (list.length > 0 && !selectedSubcontractorId) {
-        setSelectedSubcontractorId(String(list[0].id));
+
+      // 2. Fetch from dailyWagesApi.setup
+      const setupRes = await dailyWagesApi.setup().catch(() => null);
+      const setupList = setupRes?.data?.setup?.subcontractors || [];
+      if (Array.isArray(setupList) && setupList.length > 0) {
+        combined.push(...setupList);
+      }
+
+      // 3. Load from localStorage mock_subcontractors_master & mock_subcontractors
+      try {
+        const localMaster = JSON.parse(localStorage.getItem('mock_subcontractors_master') || '[]');
+        if (Array.isArray(localMaster)) combined.push(...localMaster);
+      } catch {}
+      try {
+        const localSubs = JSON.parse(localStorage.getItem('mock_subcontractors') || '[]');
+        if (Array.isArray(localSubs)) combined.push(...localSubs);
+      } catch {}
+
+      // Deduplicate by ID and contractor_name
+      const seen = new Set();
+      const uniqueSubs = [];
+      for (const s of combined) {
+        if (!s) continue;
+        const idKey = String(s.id || '').trim();
+        const nameKey = (s.contractor_name || s.name || '').trim().toLowerCase();
+        if (!idKey && !nameKey) continue;
+        if ((idKey && seen.has(`id-${idKey}`)) || (nameKey && seen.has(`name-${nameKey}`))) continue;
+        if (idKey) seen.add(`id-${idKey}`);
+        if (nameKey) seen.add(`name-${nameKey}`);
+
+        uniqueSubs.push({
+          id: s.id || `sub-${uniqueSubs.length + 1}`,
+          contractor_name: s.contractor_name || s.name || 'Subcontractor',
+          contractor_code: s.contractor_code || s.code || `SUB-${uniqueSubs.length + 1}`,
+          contractor_type_id: s.contractor_type_id || s.subcontractor_type_id || null,
+          contractor_type_name: s.contractor_type_name || s.subcontractor_type_label || s.trade || 'General Trade',
+          phone: s.phone || s.contact_phone || '',
+          contact_person: s.contact_person || '',
+        });
+      }
+
+      setSubcontractors(uniqueSubs);
+      if (uniqueSubs.length > 0 && !selectedSubcontractorId) {
+        setSelectedSubcontractorId(String(uniqueSubs[0].id));
       }
     } catch (err) {
       console.warn('Failed to load subcontractors:', err);
+    }
+  };
+
+  // Quick Create Subcontractor Handler
+  const handleCreateSubcontractor = async (e) => {
+    e.preventDefault();
+    if (!newSubForm.contractor_name.trim()) {
+      toast.error('Contractor name is required');
+      return;
+    }
+
+    setSavingNewSub(true);
+    try {
+      const code = `SUB-2026-${String(Date.now()).slice(-3)}`;
+      const payload = {
+        contractor_code: code,
+        contractor_name: newSubForm.contractor_name.trim(),
+        trade: newSubForm.trade || 'Mason',
+        contractor_type_name: newSubForm.trade || 'Mason',
+        phone: newSubForm.phone || '',
+        contact_person: newSubForm.contact_person || newSubForm.contractor_name.trim(),
+        status_id: 1,
+        is_active: true,
+      };
+
+      const res = await subcontractsApi.contractors.create(payload).catch(() => null);
+      const createdSub = res?.data?.subcontractor || res?.data?.contractor || res?.data || {};
+      const newId = String(createdSub?.id || `sub-${Date.now()}`);
+
+      const createdObj = {
+        id: newId,
+        ...payload,
+        contractor_code: createdSub?.contractor_code || code,
+      };
+
+      // Persist to local storage for instant sync across tabs
+      try {
+        const localMaster = JSON.parse(localStorage.getItem('mock_subcontractors_master') || '[]');
+        localStorage.setItem('mock_subcontractors_master', JSON.stringify([createdObj, ...localMaster]));
+        const localSubs = JSON.parse(localStorage.getItem('mock_subcontractors') || '[]');
+        localStorage.setItem('mock_subcontractors', JSON.stringify([createdObj, ...localSubs]));
+      } catch {}
+
+      setSubcontractors(prev => [createdObj, ...prev.filter(s => String(s.id) !== newId)]);
+      setSelectedSubcontractorId(newId);
+      setIsAddSubModalOpen(false);
+      setNewSubForm({ contractor_name: '', trade: 'Mason', phone: '', contact_person: '' });
+      toast.success(`Subcontractor "${createdObj.contractor_name}" created & selected!`);
+      loadSubcontractors();
+    } catch (err) {
+      toast.error(err?.message || 'Failed to create subcontractor');
+    } finally {
+      setSavingNewSub(false);
     }
   };
 
@@ -164,7 +270,7 @@ export function SiteLabourTab({ site }) {
     return subcontractors.find(s => String(s.id) === String(selectedSubcontractorId)) || null;
   }, [subcontractors, selectedSubcontractorId]);
 
-  // AUTO-LOAD TEMPLATES WHEN SUBCONTRACTOR CHANGES
+  // LOAD TEMPLATES WHEN SUBCONTRACTOR CHANGES (Clean & Deduplicated)
   useEffect(() => {
     if (!selectedSubcontractorId) {
       setTemplates([]);
@@ -179,19 +285,8 @@ export function SiteLabourTab({ site }) {
         let tmpls = [];
         const subTypeId = selectedSub?.contractor_type_id || selectedSub?.subcontractor_type_id;
 
-        // 1. Try trade/subcontractor-type templates
-        if (subTypeId && subcontractorTypesApi?.templates) {
-          try {
-            const tRes = await subcontractorTypesApi.templates(subTypeId);
-            const tItems = tRes?.data?.templates || tRes?.data || [];
-            if (Array.isArray(tItems) && tItems.length > 0) tmpls = tItems;
-          } catch (e) {
-            console.warn('subcontractorTypesApi.templates error', e);
-          }
-        }
-
-        // 2. Try contractor-specific templates
-        if ((!tmpls || tmpls.length === 0) && subcontractsApi?.contractors?.templates) {
+        // 1. Try contractor-specific templates (explicitly assigned to this contractor)
+        if (subcontractsApi?.contractors?.templates) {
           try {
             const cRes = await subcontractsApi.contractors.templates(selectedSubcontractorId);
             const cItems = cRes?.data?.templates || cRes?.data || [];
@@ -201,56 +296,53 @@ export function SiteLabourTab({ site }) {
           }
         }
 
-        // 3. Fallback to dailyWagesApi.setup
-        if (!tmpls || tmpls.length === 0) {
+        // 2. Try trade/subcontractor-type templates if contractor has a trade type
+        if ((!tmpls || tmpls.length === 0) && subTypeId && subcontractorTypesApi?.templates) {
           try {
-            const res = await dailyWagesApi.setup({
-              subcontractor_id: selectedSubcontractorId,
-              site_id: site.id,
-            });
-            const setup = res?.data?.setup || {};
-            tmpls = setup.templates || setup.default_templates || [];
+            const tRes = await subcontractorTypesApi.templates(subTypeId);
+            const tItems = tRes?.data?.templates || tRes?.data || [];
+            if (Array.isArray(tItems) && tItems.length > 0) tmpls = tItems;
           } catch (e) {
-            console.warn('dailyWagesApi.setup error', e);
+            console.warn('subcontractorTypesApi.templates error', e);
           }
         }
 
         if (!isMounted) return;
 
+        // If contractor has custom templates, deduplicate and set them
         if (Array.isArray(tmpls) && tmpls.length > 0) {
-          const normalized = tmpls.map((t, idx) => ({
-            ...t,
-            id: t.id || `tmpl-${idx}`,
-            item_name: t.item_name || t.item_description || t.description || 'Trade Item',
-            description: t.description || t.item_description || t.item_name || 'Trade Item',
-            classification: t.classification ? (t.classification.charAt(0).toUpperCase() + t.classification.slice(1).toLowerCase()) : 'Manpower',
-            uom: t.uom || t.unit || 'shift',
-            unit: t.unit || t.uom || 'shift',
-            default_rate: Number(t.default_rate !== undefined ? t.default_rate : (t.rate || 0)),
-            subcontractor_id: t.subcontractor_id ? String(t.subcontractor_id) : String(selectedSubcontractorId),
-          }));
+          const seenNames = new Set();
+          const deduplicated = [];
 
-          setTemplates(normalized);
+          tmpls.forEach((t, idx) => {
+            const rawName = (t.item_name || t.item_description || t.description || 'Trade Item').trim();
+            const normKey = rawName.toLowerCase();
+            if (seenNames.has(normKey)) return; // Avoid duplicates
+            seenNames.add(normKey);
+
+            deduplicated.push({
+              ...t,
+              id: t.id ? String(t.id) : `tmpl-${idx}`,
+              item_name: rawName,
+              description: t.description || rawName,
+              classification: t.classification ? (t.classification.charAt(0).toUpperCase() + t.classification.slice(1).toLowerCase()) : 'Manpower',
+              uom: t.uom || t.unit || 'shift',
+              unit: t.unit || t.uom || 'shift',
+              default_rate: Number(t.default_rate !== undefined ? t.default_rate : (t.rate || 0)),
+              subcontractor_id: t.subcontractor_id ? String(t.subcontractor_id) : String(selectedSubcontractorId),
+            });
+          });
+
+          setTemplates(deduplicated);
           const initialRates = {};
-          normalized.forEach(t => {
+          deduplicated.forEach(t => {
             initialRates[t.id] = Number(t.default_rate || 0);
           });
           setWageRates(prev => ({ ...prev, ...initialRates }));
         } else {
-          // Provide rich standard trade fallback if none registered
-          const fallbackDefaults = [
-            { id: 'fb-1', item_name: 'Mason (Skilled)', classification: 'Manpower', uom: 'shift', default_rate: 850 },
-            { id: 'fb-2', item_name: 'Bar Bender (Skilled)', classification: 'Manpower', uom: 'shift', default_rate: 800 },
-            { id: 'fb-3', item_name: 'Carpenter (Skilled)', classification: 'Manpower', uom: 'shift', default_rate: 850 },
-            { id: 'fb-4', item_name: 'Helper / Mazdoor (Unskilled)', classification: 'Manpower', uom: 'shift', default_rate: 550 },
-            { id: 'fb-5', item_name: 'Water Boy / Site Attendant', classification: 'Manpower', uom: 'shift', default_rate: 500 },
-          ];
-          setTemplates(fallbackDefaults);
-          const initialRates = {};
-          fallbackDefaults.forEach(t => {
-            initialRates[t.id] = t.default_rate;
-          });
-          setWageRates(prev => ({ ...prev, ...initialRates }));
+          // IMPORTANT: Do NOT automatically dump unwanted global templates with duplicate items.
+          // Start with a clean list so the user is not burdened with items they did not add.
+          setTemplates([]);
         }
       } catch (err) {
         console.error('Error fetching subcontractor templates:', err);
@@ -314,12 +406,42 @@ export function SiteLabourTab({ site }) {
     setCustomItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };
 
-  const handleRemoveItem = (id, isCustom) => {
-    if (isCustom) {
-      setCustomItems(prev => prev.filter(item => item.id !== id));
-    }
+  // Remove ANY trade item (template or custom)
+  const handleRemoveItem = (id) => {
+    setTemplates(prev => prev.filter(item => String(item.id) !== String(id)));
+    setCustomItems(prev => prev.filter(item => String(item.id) !== String(id)));
     setWageEntries(prev => { const n = { ...prev }; delete n[id]; return n; });
+    setWageRates(prev => { const n = { ...prev }; delete n[id]; return n; });
     setWageRemarks(prev => { const n = { ...prev }; delete n[id]; return n; });
+  };
+
+  // Clear all items at once
+  const handleClearAllItems = () => {
+    setTemplates([]);
+    setCustomItems([]);
+    setWageEntries({});
+    setWageRates({});
+    setWageRemarks({});
+    toast.info('All trade items cleared.');
+  };
+
+  // Load standard curated rates on demand (Mason, Helper, etc.)
+  const handleLoadStandardRates = () => {
+    const standardDefaults = [
+      { id: 'std-1', item_name: 'Head Mason', classification: 'Manpower', uom: 'shift', default_rate: 800 },
+      { id: 'std-2', item_name: 'Mason', classification: 'Manpower', uom: 'shift', default_rate: 800 },
+      { id: 'std-3', item_name: 'Male Helper', classification: 'Manpower', uom: 'shift', default_rate: 400 },
+      { id: 'std-4', item_name: 'Female Helper', classification: 'Manpower', uom: 'shift', default_rate: 300 },
+      { id: 'std-5', item_name: 'Tea / Food Allowance', classification: 'Expense', uom: 'Nos', default_rate: 16 },
+      { id: 'std-6', item_name: 'Bus / Travel Allowance', classification: 'Expense', uom: 'Nos', default_rate: 16 },
+    ];
+    setTemplates(standardDefaults);
+    const initialRates = {};
+    standardDefaults.forEach(t => {
+      initialRates[t.id] = t.default_rate;
+    });
+    setWageRates(prev => ({ ...prev, ...initialRates }));
+    toast.info('Standard trade rates loaded. You can adjust or remove any row.');
   };
 
   // SUBMIT DAILY WAGES
@@ -657,19 +779,33 @@ export function SiteLabourTab({ site }) {
               {/* Selectors */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 <FormField label="SELECT SUBCONTRACTOR" required>
-                  <div className="relative">
-                    <Select
-                      options={[
-                        { value: '', label: '-- Select Subcontractor / Trade Gang --' },
-                        ...subcontractors.map(s => ({
-                          value: String(s.id),
-                          label: `${s.contractor_name} — [${s.subcontractor_type_label || s.contractor_type_name || s.trade || 'General Trade'}]`
-                        }))
-                      ]}
-                      value={selectedSubcontractorId}
-                      onChange={(val) => setSelectedSubcontractorId(val)}
-                      className="w-full text-xs font-semibold"
-                    />
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1 min-w-0">
+                      <Select
+                        options={[
+                          { value: '', label: '-- Select Subcontractor / Trade Gang --' },
+                          ...subcontractors.map(s => ({
+                            value: String(s.id),
+                            label: `${s.contractor_name} — [${s.contractor_type_name || s.trade || 'General Trade'}]${s.phone ? ` (${s.phone})` : ''}`
+                          }))
+                        ]}
+                        value={selectedSubcontractorId}
+                        onChange={(val) => setSelectedSubcontractorId(val)}
+                        className="w-full text-xs font-semibold"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsAddSubModalOpen(true)}
+                      className="h-10 text-xs gap-1 font-bold flex-shrink-0 text-primary border-primary/30 hover:bg-primary/5"
+                      title="Create New Subcontractor"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">New Subcontractor</span>
+                      <span className="sm:hidden">New</span>
+                    </Button>
                   </div>
                 </FormField>
 
@@ -694,22 +830,50 @@ export function SiteLabourTab({ site }) {
                       <span>Contractor: <strong>{selectedSub?.contractor_name}</strong></span>
                     </div>
                     <span className="text-text-muted hidden sm:inline">•</span>
-                    <span className="text-text-secondary">Trade: <strong className="text-text-primary">{selectedSub?.subcontractor_type_label || selectedSub?.contractor_type_name || 'Trade Gang'}</strong></span>
+                    <span className="text-text-secondary">Trade: <strong className="text-text-primary">{selectedSub?.contractor_type_name || selectedSub?.trade || 'Trade Gang'}</strong></span>
                     <span className="text-text-muted hidden sm:inline">•</span>
                     <Badge variant="neutral" className="text-[10px] font-semibold">
-                      {templates.length} Trade Items loaded
+                      {allTemplates.length} Trade Items
                     </Badge>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAddCustomItem}
-                    className="h-8 text-xs gap-1 font-semibold w-full sm:w-auto justify-center"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    + Add Custom Item
-                  </Button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {allTemplates.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearAllItems}
+                        className="h-8 text-xs gap-1 font-medium text-red-600 hover:bg-red-50 hover:text-red-700"
+                        title="Clear all trade items"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Clear All
+                      </Button>
+                    )}
+                    {templates.length === 0 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleLoadStandardRates}
+                        className="h-8 text-xs gap-1 font-semibold text-text-secondary"
+                        title="Load standard trade rates"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                        Load Standard Rates
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddCustomItem}
+                      className="h-8 text-xs gap-1 font-semibold w-full sm:w-auto justify-center"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      + Add Trade Item
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -754,8 +918,31 @@ export function SiteLabourTab({ site }) {
                         </div>
                       </div>
                     ) : filteredTemplates.length === 0 ? (
-                      <div className="py-8 text-center text-text-muted bg-surface-muted/30 rounded-xl border border-dashed border-border p-4 text-xs">
-                        No items found. Tap "+ Add Custom Item" to insert a custom trade line.
+                      <div className="py-8 text-center text-text-muted bg-surface-muted/30 rounded-xl border border-dashed border-border p-4 text-xs space-y-2">
+                        <p className="font-semibold text-text-primary">No trade items in list.</p>
+                        <p className="text-[11px] text-text-muted">Tap "+ Add Trade Item" or "Standard Rates" to start.</p>
+                        <div className="flex items-center justify-center gap-2 pt-1">
+                          <Button
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            onClick={handleAddCustomItem}
+                            className="text-xs h-7 gap-1 font-semibold"
+                          >
+                            <Plus className="w-3 h-3" />
+                            + Add Trade Item
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleLoadStandardRates}
+                            className="text-xs h-7 gap-1 font-semibold"
+                          >
+                            <Sparkles className="w-3 h-3 text-amber-500" />
+                            Standard Rates
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       filteredTemplates.map((t, idx) => {
@@ -815,16 +1002,14 @@ export function SiteLabourTab({ site }) {
                                 </div>
                               </div>
 
-                              {t.isCustom && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveItem(t.id, true)}
-                                  className="p-1.5 text-text-muted hover:text-red-600 rounded-lg bg-surface-muted transition-colors flex-shrink-0"
-                                  title="Remove Custom Item"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(t.id)}
+                                className="p-1.5 text-text-muted hover:text-red-600 rounded-lg bg-surface-muted transition-colors flex-shrink-0"
+                                title="Remove Item"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
 
                             {/* Stepper + Rate Inputs */}
@@ -945,7 +1130,32 @@ export function SiteLabourTab({ site }) {
                         ) : filteredTemplates.length === 0 ? (
                           <tr>
                             <td colSpan="9" className="py-8 text-center text-text-muted">
-                              No items found. Click "+ Add Custom Item" to insert a custom trade line.
+                              <div className="space-y-2">
+                                <p className="font-semibold text-text-primary">No trade items in list.</p>
+                                <p className="text-xs text-text-muted">Click "+ Add Trade Item" or "Load Standard Rates" to add items.</p>
+                                <div className="flex items-center justify-center gap-2 pt-1">
+                                  <Button
+                                    type="button"
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={handleAddCustomItem}
+                                    className="text-xs h-7 gap-1 font-semibold"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    + Add Trade Item
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleLoadStandardRates}
+                                    className="text-xs h-7 gap-1 font-semibold"
+                                  >
+                                    <Sparkles className="w-3 h-3 text-amber-500" />
+                                    Load Standard Rates
+                                  </Button>
+                                </div>
+                              </div>
                             </td>
                           </tr>
                         ) : (
@@ -1014,16 +1224,14 @@ export function SiteLabourTab({ site }) {
                                   />
                                 </td>
                                 <td className="px-2 py-2 text-center">
-                                  {t.isCustom && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleRemoveItem(t.id, true)}
-                                      className="p-1 text-text-muted hover:text-red-600 rounded transition-colors"
-                                      title="Remove Custom Item"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveItem(t.id)}
+                                    className="p-1 text-text-muted hover:text-red-600 rounded transition-colors"
+                                    title="Remove Item"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
                                 </td>
                               </tr>
                             );
@@ -1645,6 +1853,81 @@ export function SiteLabourTab({ site }) {
               className="text-xs font-bold"
             >
               {deploying ? 'Deploying...' : 'Deploy to Site'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Quick Add Subcontractor Modal */}
+      <Modal
+        isOpen={isAddSubModalOpen}
+        onClose={() => setIsAddSubModalOpen(false)}
+        title="Register New Subcontractor"
+        subtitle="Add a subcontractor to assign for site works and daily wage tracking"
+        maxWidth="max-w-md"
+      >
+        <form onSubmit={handleCreateSubcontractor} className="space-y-4">
+          <FormField label="Contractor / Vendor Name" required>
+            <Input
+              value={newSubForm.contractor_name}
+              onChange={(e) => setNewSubForm(prev => ({ ...prev, contractor_name: e.target.value }))}
+              placeholder="e.g. Apex Concrete Gang, Selvam Maistry"
+              required
+            />
+          </FormField>
+
+          <FormField label="Trade Specialization" required>
+            <Select
+              value={newSubForm.trade}
+              onChange={(val) => setNewSubForm(prev => ({ ...prev, trade: val }))}
+              options={[
+                { value: 'Mason', label: 'Mason / Brickwork' },
+                { value: 'Maistry', label: 'Maistry / General Gang' },
+                { value: 'Bar Bender', label: 'Bar Bender / Steel Fixer' },
+                { value: 'Carpenter', label: 'Carpenter / Shuttering' },
+                { value: 'Painter', label: 'Painter' },
+                { value: 'Electrician', label: 'Electrician' },
+                { value: 'Plumber', label: 'Plumber' },
+                { value: 'General Labour', label: 'General Labour' },
+              ]}
+            />
+          </FormField>
+
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Phone Number">
+              <Input
+                type="tel"
+                value={newSubForm.phone}
+                onChange={(e) => setNewSubForm(prev => ({ ...prev, phone: e.target.value }))}
+                placeholder="e.g. 9876543210"
+              />
+            </FormField>
+            <FormField label="Contact Person">
+              <Input
+                value={newSubForm.contact_person}
+                onChange={(e) => setNewSubForm(prev => ({ ...prev, contact_person: e.target.value }))}
+                placeholder="e.g. Selvam"
+              />
+            </FormField>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-border">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAddSubModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="sm"
+              disabled={savingNewSub}
+              className="gap-1.5 font-bold"
+            >
+              {savingNewSub ? 'Saving...' : 'Add Subcontractor'}
             </Button>
           </div>
         </form>

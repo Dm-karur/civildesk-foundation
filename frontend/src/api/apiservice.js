@@ -323,6 +323,7 @@ export const dailyWagesApi = {
     templates: (params) => request.get('/daily-wages/templates', params),
     createTemplate: (payload) => request.post('/daily-wages/templates', payload),
     updateTemplate: (id, payload) => request.patch(`/daily-wages/templates/${enc(id)}`, payload),
+    deleteTemplate: (id) => request.delete(`/daily-wages/templates/${enc(id)}`),
     weeklyReport: (params) => request.get('/daily-wages/weekly-report', params),
 };
 export const subWorkApi = dailyWagesApi;

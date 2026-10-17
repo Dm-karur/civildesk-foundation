@@ -272,24 +272,39 @@ export function SubcontractorsPage() {
 
     try {
       if (editingItem?.id) {
-        await subcontractsApi.contractors.update(editingItem.id, payload).catch(() => {});
-        setContractors(prev => prev.map(c => c.id === editingItem.id ? { ...c, ...payload, is_active: isActive } : c));
+        await subcontractsApi.contractors.update(editingItem.id, payload);
         toast.success(`Subcontractor "${payload.contractor_name}" updated successfully.`);
       } else {
-        const res = await subcontractsApi.contractors.create(payload).catch(() => null);
-        const newId = res?.data?.id || (contractors.length > 0 ? Math.max(...contractors.map(c => Number(c.id) || 0)) + 1 : 1);
-        setContractors(prev => [{
+        const res = await subcontractsApi.contractors.create(payload);
+        const createdSub = res?.data?.subcontractor || res?.data || {};
+        const newId = createdSub?.id ? String(createdSub.id) : (contractors.length > 0 ? Math.max(...contractors.map(c => Number(c.id) || 0)) + 1 : 1);
+        const newContractor = {
           id: String(newId),
           ...payload,
+          contractor_code: createdSub?.contractor_code || payload.contractor_code,
           is_active: isActive,
           active_work_orders: 0,
-        }, ...prev]);
+        };
+        setContractors(prev => [newContractor, ...prev]);
+        try {
+          const masterList = JSON.parse(localStorage.getItem('mock_subcontractors_master') || '[]');
+          localStorage.setItem('mock_subcontractors_master', JSON.stringify([newContractor, ...masterList.filter(x => String(x.id) !== String(newId))]));
+          const subsList = JSON.parse(localStorage.getItem('mock_subcontractors') || '[]');
+          localStorage.setItem('mock_subcontractors', JSON.stringify([newContractor, ...subsList.filter(x => String(x.id) !== String(newId))]));
+        } catch {}
         toast.success(`Subcontractor "${payload.contractor_name}" onboarded successfully.`);
       }
       setIsAddOpen(false);
       setEditingItem(null);
+      fetchList();
     } catch (err) {
-      toast.error(err?.message || 'Failed to save subcontractor.');
+      const respData = err?.response?.data;
+      const validationErrors = respData?.errors;
+      if (validationErrors && typeof validationErrors === 'object') {
+        setErrors(validationErrors);
+      }
+      const msg = respData?.message || err?.message || 'Failed to save subcontractor.';
+      toast.error(msg);
     } finally {
       setSaving(false);
     }

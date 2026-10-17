@@ -520,6 +520,7 @@ $routes->group('api/daily-wages',['namespace'=>'App\\Controllers\\Api','filter'=
     $routes->get('templates','DailyWagesRegisterController::templates',['filter'=>'apiPermission:wages.view']);
     $routes->post('templates','DailyWagesRegisterController::createTemplate',['filter'=>'apiPermission:wages.calculate']);
     $routes->match(['put','patch'],'templates/(:num)','DailyWagesRegisterController::updateTemplate/$1',['filter'=>'apiPermission:wages.calculate']);
+    $routes->delete('templates/(:num)','DailyWagesRegisterController::deleteTemplate/$1',['filter'=>'apiPermission:wages.calculate']);
     $routes->get('weekly-report','DailyWagesRegisterController::weeklyReport',['filter'=>'apiPermission:wages.view']);
     $routes->get('','DailyWagesRegisterController::index',['filter'=>'apiPermission:wages.view']);
     $routes->post('','DailyWagesRegisterController::create',['filter'=>'apiPermission:wages.calculate']);
@@ -535,6 +536,7 @@ $routes->group('api/sub-work',['namespace'=>'App\\Controllers\\Api','filter'=>'a
     $routes->get('templates','DailyWagesRegisterController::templates',['filter'=>'apiPermission:wages.view']);
     $routes->post('templates','DailyWagesRegisterController::createTemplate',['filter'=>'apiPermission:wages.calculate']);
     $routes->match(['put','patch'],'templates/(:num)','DailyWagesRegisterController::updateTemplate/$1',['filter'=>'apiPermission:wages.calculate']);
+    $routes->delete('templates/(:num)','DailyWagesRegisterController::deleteTemplate/$1',['filter'=>'apiPermission:wages.calculate']);
     $routes->get('weekly-report','DailyWagesRegisterController::weeklyReport',['filter'=>'apiPermission:wages.view']);
     $routes->get('','DailyWagesRegisterController::index',['filter'=>'apiPermission:wages.view']);
     $routes->post('','DailyWagesRegisterController::create',['filter'=>'apiPermission:wages.calculate']);

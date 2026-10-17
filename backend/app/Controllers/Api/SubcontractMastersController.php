@@ -12,6 +12,7 @@ class SubcontractMastersController extends SubcontractApiController
     {
         $u = $this->user();
         if (!$u) return $this->unauthorized();
+        $this->ensureMastersExist();
         $db = db_connect();
         $map = [
             'contractor_types'      => ['subcontractors_contractor_type_masters', 'sort_order'],
@@ -182,6 +183,53 @@ class SubcontractMastersController extends SubcontractApiController
         return $this->contractor($id);
     }
 
+    private function ensureMastersExist(): void
+    {
+        $db = db_connect();
+        try {
+            $typeCount = $db->table('subcontractors_contractor_type_masters')->countAllResults();
+            if ($typeCount === 0) {
+                $defaults = [
+                    ['id' => 1, 'contractor_type_code' => 'INDIVIDUAL', 'contractor_type_name' => 'Individual', 'sort_order' => 1, 'is_active' => 1],
+                    ['id' => 2, 'contractor_type_code' => 'PROPRIETORSHIP', 'contractor_type_name' => 'Proprietorship', 'sort_order' => 2, 'is_active' => 1],
+                    ['id' => 3, 'contractor_type_code' => 'PARTNERSHIP', 'contractor_type_name' => 'Partnership', 'sort_order' => 3, 'is_active' => 1],
+                    ['id' => 4, 'contractor_type_code' => 'PRIVATE_LIMITED', 'contractor_type_name' => 'Private Limited', 'sort_order' => 4, 'is_active' => 1],
+                    ['id' => 5, 'contractor_type_code' => 'SUB-MAIS', 'contractor_type_name' => 'Maistry', 'sort_order' => 5, 'is_active' => 1],
+                    ['id' => 6, 'contractor_type_code' => 'SUB-CARP', 'contractor_type_name' => 'Carpenter', 'sort_order' => 6, 'is_active' => 1],
+                    ['id' => 7, 'contractor_type_code' => 'SUB-CENT', 'contractor_type_name' => 'Centering', 'sort_order' => 7, 'is_active' => 1],
+                    ['id' => 8, 'contractor_type_code' => 'SUB-BAR',  'contractor_type_name' => 'Bar Bender', 'sort_order' => 8, 'is_active' => 1],
+                ];
+                foreach ($defaults as $d) {
+                    try {
+                        $db->table('subcontractors_contractor_type_masters')->insert($d);
+                    } catch (\Throwable $e) {
+                        unset($d['id']);
+                        $db->table('subcontractors_contractor_type_masters')->insert($d);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+
+        try {
+            $statusCount = $db->table('subcontractors_status_masters')->countAllResults();
+            if ($statusCount === 0) {
+                $stDefaults = [
+                    ['id' => 1, 'status_code' => 'ACTIVE', 'status_name' => 'Active', 'sort_order' => 1, 'is_active' => 1],
+                    ['id' => 2, 'status_code' => 'INACTIVE', 'status_name' => 'Inactive', 'sort_order' => 2, 'is_active' => 1],
+                    ['id' => 3, 'status_code' => 'BLACKLISTED', 'status_name' => 'Blacklisted', 'sort_order' => 3, 'is_active' => 1],
+                ];
+                foreach ($stDefaults as $sd) {
+                    try {
+                        $db->table('subcontractors_status_masters')->insert($sd);
+                    } catch (\Throwable $e) {
+                        unset($sd['id']);
+                        $db->table('subcontractors_status_masters')->insert($sd);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {}
+    }
+
     private function save(?int $id): ResponseInterface
     {
         $u = $this->user();
@@ -192,10 +240,9 @@ class SubcontractMastersController extends SubcontractApiController
         $old = $id ? $this->row('subcontractors', $id, $c) : null;
         if ($id && !$old) return $this->missing();
 
-        // Support flexible subcontractor_type_id mapping
-        if (!isset($in['contractor_type_id']) && isset($in['subcontractor_type_id'])) {
-            $in['contractor_type_id'] = (int) $in['subcontractor_type_id'];
-        }
+        $this->ensureMastersExist();
+        $this->ensureTemplateTable();
+        $db = db_connect();
 
         // Support flexible active/inactive status mapping
         if (isset($in['is_active'])) {
@@ -204,16 +251,6 @@ class SubcontractMastersController extends SubcontractApiController
             $s = strtolower(trim((string) $in['status']));
             if ($s === 'inactive' || $s === '2') $in['status_id'] = 2;
             elseif ($s === 'active' || $s === '1') $in['status_id'] = 1;
-        }
-
-        if (!isset($in['status_id']) && $id === null) {
-            $in['status_id'] = 1; // Default Active
-        }
-
-        // Auto-generate code if empty on create
-        if ($id === null && empty($in['contractor_code'])) {
-            $nextNum = db_connect()->table('subcontractors')->where('company_id', $c)->countAllResults() + 1;
-            $in['contractor_code'] = 'SC-' . date('Y') . '-' . str_pad((string) $nextNum, 3, '0', STR_PAD_LEFT);
         }
 
         // Support bank details and contact person shortcuts
@@ -227,6 +264,83 @@ class SubcontractMastersController extends SubcontractApiController
             $in['contact_person'] = $in['contractor_name'];
         }
 
+        // 1. Resolve contractor_type_id safely
+        $rawTypeId = (int) ($in['contractor_type_id'] ?? $in['subcontractor_type_id'] ?? 0);
+        $resolvedType = null;
+        if ($rawTypeId > 0) {
+            $resolvedType = $db->table('subcontractors_contractor_type_masters')->where('id', $rawTypeId)->get()->getRowArray();
+        }
+
+        if (!$resolvedType) {
+            $category = trim((string) ($in['contractor_category'] ?? $in['trade'] ?? $in['trade_specialization'] ?? $in['contractor_type_name'] ?? ''));
+            if ($category !== '') {
+                $resolvedType = $db->table('subcontractors_contractor_type_masters')
+                    ->groupStart()
+                        ->where('contractor_type_code', strtoupper($category))
+                        ->orLike('contractor_type_name', $category)
+                        ->orLike('contractor_type_code', $category)
+                    ->groupEnd()
+                    ->get()->getRowArray();
+            }
+        }
+
+        if (!$resolvedType) {
+            $resolvedType = $db->table('subcontractors_contractor_type_masters')
+                ->where('is_active', 1)
+                ->orderBy('sort_order', 'ASC')
+                ->orderBy('id', 'ASC')
+                ->get()->getRowArray();
+        }
+
+        if (!$resolvedType) {
+            $resolvedType = $db->table('subcontractors_contractor_type_masters')->orderBy('id', 'ASC')->get()->getRowArray();
+        }
+
+        if ($resolvedType) {
+            if (isset($resolvedType['is_active']) && (int) $resolvedType['is_active'] === 0) {
+                $db->table('subcontractors_contractor_type_masters')->where('id', (int) $resolvedType['id'])->update(['is_active' => 1]);
+            }
+            $in['contractor_type_id'] = (int) $resolvedType['id'];
+        } else {
+            $in['contractor_type_id'] = 1;
+        }
+
+        // 2. Resolve status_id safely
+        $rawStatusId = (int) ($in['status_id'] ?? 1);
+        $resolvedStatus = $db->table('subcontractors_status_masters')->where('id', $rawStatusId)->get()->getRowArray();
+        if (!$resolvedStatus) {
+            $resolvedStatus = $db->table('subcontractors_status_masters')->where('is_active', 1)->orderBy('sort_order', 'ASC')->get()->getRowArray();
+        }
+        if (!$resolvedStatus) {
+            $resolvedStatus = $db->table('subcontractors_status_masters')->orderBy('id', 'ASC')->get()->getRowArray();
+        }
+        if ($resolvedStatus) {
+            $in['status_id'] = (int) $resolvedStatus['id'];
+        } else {
+            $in['status_id'] = 1;
+        }
+
+        // 3. Resolve contractor_code safely and prevent collision when creating multiple subcontractors
+        if ($id === null) {
+            $codeBase = trim((string) ($in['contractor_code'] ?? ''));
+            if ($codeBase === '') {
+                $nextNum = $db->table('subcontractors')->where('company_id', $c)->countAllResults() + 1;
+                $codeBase = 'SC-' . date('Y') . '-' . str_pad((string) $nextNum, 3, '0', STR_PAD_LEFT);
+            }
+            $candidate = $codeBase;
+            $attempt = 1;
+            while ($db->table('subcontractors')->where(['company_id' => $c, 'contractor_code' => $candidate])->where('deleted_at', null)->countAllResults() > 0) {
+                $nextSeq = $db->table('subcontractors')->where('company_id', $c)->countAllResults() + $attempt;
+                $candidate = 'SC-' . date('Y') . '-' . str_pad((string) $nextSeq, 3, '0', STR_PAD_LEFT);
+                $attempt++;
+                if ($attempt > 50) {
+                    $candidate = 'SC-' . date('Y') . '-' . substr(uniqid(), -5);
+                    break;
+                }
+            }
+            $in['contractor_code'] = $candidate;
+        }
+
         $fs = [
             'contractor_code', 'contractor_name', 'contractor_type_id', 'contact_person',
             'phone', 'alternate_phone', 'email', 'gstin', 'pan', 'address_line1', 'address_line2',
@@ -236,26 +350,17 @@ class SubcontractMastersController extends SubcontractApiController
         ];
         $d = array_intersect_key($in, array_flip($fs));
         $m = array_merge($old ?? [], $d);
-        $e = $this->required($m, ['contractor_code', 'contractor_name', 'contractor_type_id', 'status_id']);
+        $e = $this->required($m, ['contractor_name']);
 
-        foreach ([
-            ['subcontractors_contractor_type_masters', 'contractor_type_id'],
-            ['subcontractors_status_masters', 'status_id']
-        ] as [$t, $f]) {
-            if (!$this->masterId($t, $f === 'contractor_type_id' ? 'contractor_type_code' : 'status_code', $this->code($t, $f === 'contractor_type_id' ? 'contractor_type_code' : 'status_code', (int) ($m[$f] ?? 0)))) {
-                $e[$f] = 'Select a valid active master value.';
-            }
+        if ($id) {
+            $dup = $db->table('subcontractors')->where(['company_id' => $c, 'contractor_code' => $m['contractor_code'] ?? ''])->where('deleted_at', null)->where('id !=', $id);
+            if ($dup->countAllResults()) $e['contractor_code'] = 'Contractor code already exists.';
         }
-
-        $dup = db_connect()->table('subcontractors')->where(['company_id' => $c, 'contractor_code' => $m['contractor_code'] ?? ''])->where('deleted_at', null);
-        if ($id) $dup->where('id !=', $id);
-        if ($dup->countAllResults()) $e['contractor_code'] = 'Contractor code already exists.';
 
         if ($e) return $this->invalid($e);
 
         $d['updated_by'] = (int) $u->id;
         $d['updated_at'] = $this->now();
-        $db = db_connect();
 
         if ($id) {
             $db->table('subcontractors')->where('id', $id)->update($d);

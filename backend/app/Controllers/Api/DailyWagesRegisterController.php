@@ -238,8 +238,8 @@ class DailyWagesRegisterController extends LabourApiController
                 }
             }
 
-            // 3. ONLY if still empty (no subcontractor templates AND no trade templates), fallback to global defaults
-            if (empty($templates)) {
+            // 3. Only if include_global=1, fallback to global defaults
+            if (empty($templates) && $this->request->getGet('include_global') === '1') {
                 $templates = db_connect()->table('daily_wage_item_templates')
                     ->where('company_id', $companyId)
                     ->where('subcontractor_id', null)
@@ -303,6 +303,17 @@ class DailyWagesRegisterController extends LabourApiController
                 'default_rate' => (float) ($t['default_rate'] ?? 0),
             ]);
         }, $templates);
+
+        // Deduplicate templates by normalized name so duplicate items are never returned
+        $seen = [];
+        $uniqueTemplates = [];
+        foreach ($normalizedTemplates as $t) {
+            $key = strtolower(trim($t['item_name']));
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $uniqueTemplates[] = $t;
+        }
+        $normalizedTemplates = $uniqueTemplates;
 
         return $this->ok('Daily wage setup retrieved successfully.', 'setup', [
             'projects' => $projects,
@@ -369,7 +380,16 @@ class DailyWagesRegisterController extends LabourApiController
                     'is_active' => 1,
                 ];
             }
+        // Deduplicate templates by normalized description
+        $seen = [];
+        $unique = [];
+        foreach ($items as $item) {
+            $key = strtolower(trim($item['item_name'] ?? $item['description'] ?? ''));
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $unique[] = $item;
         }
+        $items = $unique;
 
         return $this->ok('Daily wage templates retrieved successfully.', 'templates', $items);
     }
