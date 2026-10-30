@@ -380,6 +380,8 @@ class DailyWagesRegisterController extends LabourApiController
                     'is_active' => 1,
                 ];
             }
+        }
+
         // Deduplicate templates by normalized description
         $seen = [];
         $unique = [];
@@ -465,7 +467,7 @@ class DailyWagesRegisterController extends LabourApiController
                 'subcontractor_id' => (int) $in['subcontractor_id'],
                 'wage_date' => (string) $in['wage_date'],
                 'total_amount' => 0,
-                'global_remarks' => trim((string) ($in['global_remarks'] ?? '')) ?: null,
+                'global_remarks' => trim((string) ($in['global_remarks'] ?? $in['remarks'] ?? '')) ?: null,
                 'status' => 'SUBMITTED',
                 'created_by' => (int) $u->id,
                 'updated_by' => (int) $u->id,
@@ -522,7 +524,7 @@ class DailyWagesRegisterController extends LabourApiController
                 'site_id' => (int) $merged['site_id'],
                 'subcontractor_id' => (int) $merged['subcontractor_id'],
                 'wage_date' => (string) $merged['wage_date'],
-                'global_remarks' => trim((string) ($merged['global_remarks'] ?? '')) ?: null,
+                'global_remarks' => trim((string) ($merged['global_remarks'] ?? $merged['remarks'] ?? '')) ?: null,
                 'updated_by' => (int) $u->id,
                 'updated_at' => $this->now(),
             ];
