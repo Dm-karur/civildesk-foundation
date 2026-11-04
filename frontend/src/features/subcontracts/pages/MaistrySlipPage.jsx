@@ -10,7 +10,7 @@ import { Button } from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { toast } from '../../../components/composite/Toast';
-import { projectsApi, subcontractsApi, dailyWagesApi } from '../../../api/apiservice';
+import { projectsApi, subcontractsApi, dailyWagesApi, sitesApi } from '../../../api/apiservice';
 import { generateAndDownloadA5SlipFromItem, printA5SlipFromItem } from '../utils/a5SlipExportUtils';
 
 const LOCAL_SLIPS_KEY = 'mock_maistry_slips';
@@ -249,24 +249,9 @@ export function MaistrySlipPage() {
             }).catch(() => {});
           }
         }
-      } else if (paramContractorId && paramDate) {
-        dailyWagesApi.list({ subcontractor_id: paramContractorId, date: paramDate }).then(res => {
-          const regs = res?.data?.registers ?? res?.data?.daily_wages ?? (Array.isArray(res?.data) ? res.data : []);
-          if (regs.length > 0) {
-            const reg = regs[0];
-            loadSlipIntoForm({
-              ...reg,
-              id: `dwr-${reg.id}`,
-              voucher_no: reg.register_no || `DWR-${reg.id}`,
-              ref_no: reg.register_no || `DWR-${reg.id}`,
-              week_start: reg.wage_date,
-              week_end: reg.wage_date,
-              site_id: String(reg.site_id),
-              contractor_id: String(reg.subcontractor_id),
-              lines: reg.lines || []
-            });
-          }
-        }).catch(() => {});
+      } else if (paramContractorId) {
+        // Auto-aggregate 7-day weekly wage logs from Site Labour for this contractor
+        handleReloadLogs(paramContractorId, initialMonday, paramSiteId);
       }
     } catch {
       setSavedSlips([]);
@@ -287,18 +272,34 @@ export function MaistrySlipPage() {
 
   // Load project sites & live subcontractors
   useEffect(() => {
-    projectsApi.list().then(res => {
-      const pList = res?.data?.projects ?? res?.projects ?? (Array.isArray(res?.data) ? res.data : []);
-      if (Array.isArray(pList) && pList.length > 0) {
-        const mapped = pList.map((p, i) => ({
-          id: String(p.id),
-          name: p.project_name || p.name,
-          client: p.client_name || 'Project Client',
-          code: p.project_code || `SITE-0${i + 1}`
+    sitesApi.list().then(res => {
+      const sList = res?.data?.sites ?? res?.data?.data ?? (Array.isArray(res?.data) ? res.data : []);
+      if (Array.isArray(sList) && sList.length > 0) {
+        const mapped = sList.map((s, i) => ({
+          id: String(s.id),
+          name: s.site_name || s.name,
+          client: s.client_name || s.project_name || 'Project Client',
+          code: s.site_code || `SITE-${String(s.id).padStart(2, '0')}`
         }));
         setSites(mapped);
+        if (paramSiteId && mapped.some(s => s.id === String(paramSiteId))) {
+          setSelectedSiteId(String(paramSiteId));
+        }
       }
-    }).catch(() => {});
+    }).catch(() => {
+      projectsApi.list().then(res => {
+        const pList = res?.data?.projects ?? res?.projects ?? (Array.isArray(res?.data) ? res.data : []);
+        if (Array.isArray(pList) && pList.length > 0) {
+          const mapped = pList.map((p, i) => ({
+            id: String(p.id),
+            name: p.project_name || p.name,
+            client: p.client_name || 'Project Client',
+            code: p.project_code || `SITE-0${i + 1}`
+          }));
+          setSites(mapped);
+        }
+      }).catch(() => {});
+    });
 
     // Live Subcontractors from API
     subcontractsApi.contractors.list().then(res => {
@@ -516,7 +517,7 @@ export function MaistrySlipPage() {
   }, [categories, enableMaistryPct, maistryPctValue, roundOff]);
 
   // Reload Logs from DB and Site Labour Store
-  const handleReloadLogs = async (targetConId = null, targetStart = null) => {
+  const handleReloadLogs = async (targetConId = null, targetStart = null, targetSiteId = null) => {
     const conId = targetConId || selectedMaistryId;
     if (!conId) return;
 
@@ -525,7 +526,12 @@ export function MaistrySlipPage() {
 
       // Query real database daily wage registers
       try {
-        const dbRes = await dailyWagesApi.list({ subcontractor_id: conId }).catch(() => null);
+        const qParams = { subcontractor_id: conId };
+        const activeSite = targetSiteId || selectedSiteId;
+        if (activeSite && activeSite !== 'all' && !activeSite.startsWith('SITE-0')) {
+          qParams.site_id = activeSite;
+        }
+        const dbRes = await dailyWagesApi.list(qParams).catch(() => null);
         const dbRegs = dbRes?.data?.registers ?? dbRes?.data?.daily_wages ?? (Array.isArray(dbRes?.data) ? dbRes.data : []);
         if (Array.isArray(dbRegs) && dbRegs.length > 0) {
           dbRegs.forEach(reg => {

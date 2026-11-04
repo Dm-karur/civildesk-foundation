@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CreditCard, CheckCircle2, IndianRupee, Clock, Building2,
   Search, Filter, Eye, Edit, Trash2, Plus, ArrowRight,
   ShieldCheck, Check, AlertCircle, Sparkles, Printer, FileText,
   Calendar, Users, DollarSign, ArrowUpRight, CheckSquare,
-  ChevronDown, ExternalLink, X, RefreshCw, Download
+  ChevronDown, ExternalLink, X, RefreshCw, Download, RotateCcw
 } from 'lucide-react';
 import { PageHeader } from '../../../components/layout/PageHeader';
 import { PageContainer } from '../../../components/layout/PageContainer';
@@ -22,7 +22,7 @@ import { FormField } from '../../../components/composite/FormField';
 import { EntityEditModal } from '../../../components/composite/EntityEditModal';
 import { ConfirmDialog } from '../../../components/composite/ConfirmDialog';
 import { toast } from '../../../components/composite/Toast';
-import { projectsApi, subcontractsApi, dailyWagesApi } from '../../../api/apiservice';
+import { projectsApi, subcontractsApi, dailyWagesApi, sitesApi } from '../../../api/apiservice';
 import { useAuth } from '../../auth/context/AuthContext';
 import { generateAndDownloadA5SlipFromItem, printA5SlipFromItem } from '../utils/a5SlipExportUtils';
 
@@ -202,18 +202,34 @@ const EMPTY_FORM = {
 
 export function SubcontractorWeeklyPaymentsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paramSiteId = searchParams.get('site_id');
+  const paramContractorId = searchParams.get('contractor_id');
+  const paramProjectId = searchParams.get('project_id');
+  const paramDate = searchParams.get('date');
+
   const { hasPermission } = useAuth();
   const [payments, setPayments] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [sites, setSites] = useState([]);
   const [subcontractors, setSubcontractors] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // Filters
-  const [selectedProjectId, setSelectedProjectId] = useState('all');
+  const [selectedProjectId, setSelectedProjectId] = useState(paramProjectId || 'all');
+  const [selectedSiteId, setSelectedSiteId] = useState(paramSiteId || 'all');
+  const [selectedContractorId, setSelectedContractorId] = useState(paramContractorId || 'all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const perPage = 10;
+
+  // Sync state if URL query params update
+  useEffect(() => {
+    if (paramProjectId) setSelectedProjectId(paramProjectId);
+    if (paramSiteId) setSelectedSiteId(paramSiteId);
+    if (paramContractorId) setSelectedContractorId(paramContractorId);
+  }, [paramProjectId, paramSiteId, paramContractorId]);
 
   // Modals
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -237,11 +253,17 @@ export function SubcontractorWeeklyPaymentsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [wagesRes, projRes, contrRes] = await Promise.all([
-        dailyWagesApi.list({ limit: 300 }).catch(() => ({ data: [] })),
+      const [wagesRes, projRes, contrRes, sitesRes] = await Promise.all([
+        dailyWagesApi.list({ limit: 500 }).catch(() => ({ data: [] })),
         projectsApi.list().catch(() => ({ data: [] })),
-        subcontractsApi.contractors.list().catch(() => ({ data: [] }))
+        subcontractsApi.contractors.list().catch(() => ({ data: [] })),
+        sitesApi.list().catch(() => ({ data: [] }))
       ]);
+
+      const sList = sitesRes?.data?.sites ?? sitesRes?.data?.data ?? (Array.isArray(sitesRes?.data) ? sitesRes.data : []);
+      if (Array.isArray(sList) && sList.length > 0) {
+        setSites(sList);
+      }
 
       const pList = projRes?.data?.projects ?? projRes?.projects ?? (Array.isArray(projRes?.data) ? projRes.data : []);
       if (Array.isArray(pList) && pList.length > 0) {
@@ -335,7 +357,7 @@ export function SubcontractorWeeklyPaymentsPage() {
             project_id: String(reg.project_id || (pList[0]?.id || '1')),
             project_name: reg.project_name || pList.find(p => String(p.id) === String(reg.project_id))?.project_name || 'Site Project',
             site_id: String(reg.site_id || 'SITE-01'),
-            site_name: reg.site_name || 'Site Name',
+            site_name: reg.site_name || sList.find(s => String(s.id) === String(reg.site_id))?.site_name || `Site #${reg.site_id || ''}`,
             contractor_id: String(reg.subcontractor_id || reg.contractor_id || ''),
             contractor_name: reg.subcontractor_name || reg.contractor_name || 'Subcontractor',
             trade_category: reg.contractor_type_name || reg.trade_category || 'Labour Gang',
@@ -398,15 +420,11 @@ export function SubcontractorWeeklyPaymentsPage() {
         }
       } catch {}
 
-      // Keep user-created custom manual payments that are not from db registers
-      const customLocalPayments = localSaved.filter(p => !p.daily_wage_register_id && !p.is_real_db && !realWeeklyPayments.some(r => r.id === p.id || r.voucher_no === p.voucher_no));
+      // Keep genuine user-created custom manual payments (purge old fake mock seed entries swp-001..005)
+      const isMockSeed = (p) => p && p.id && /^swp-00[1-5]$/.test(String(p.id));
+      const customLocalPayments = localSaved.filter(p => !isMockSeed(p) && !p.daily_wage_register_id && !p.is_real_db && !realWeeklyPayments.some(r => r.id === p.id || r.voucher_no === p.voucher_no));
 
       let finalCombined = [...realWeeklyPayments, ...customLocalPayments];
-
-      // If user had no real logs and no custom payments at all, fallback to initial seed
-      if (finalCombined.length === 0) {
-        finalCombined = [...INITIAL_SEED_DATA];
-      }
 
       setPayments(finalCombined);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(finalCombined));
@@ -453,6 +471,12 @@ export function SubcontractorWeeklyPaymentsPage() {
       if (selectedProjectId !== 'all' && String(item.project_id) !== String(selectedProjectId)) {
         return false;
       }
+      if (selectedSiteId !== 'all' && String(item.site_id) !== String(selectedSiteId)) {
+        return false;
+      }
+      if (selectedContractorId !== 'all' && String(item.contractor_id) !== String(selectedContractorId)) {
+        return false;
+      }
       if (statusFilter !== 'all' && item.status !== statusFilter) {
         return false;
       }
@@ -470,7 +494,7 @@ export function SubcontractorWeeklyPaymentsPage() {
       }
       return true;
     });
-  }, [payments, selectedProjectId, statusFilter, search]);
+  }, [payments, selectedProjectId, selectedSiteId, selectedContractorId, statusFilter, search]);
 
   const totalPages = Math.max(1, Math.ceil(filteredPayments.length / perPage));
   const pagedList = filteredPayments.slice((page - 1) * perPage, page * perPage);
@@ -973,13 +997,13 @@ export function SubcontractorWeeklyPaymentsPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-surface rounded-xl border border-border p-4 mb-6 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="lg:col-span-2">
+      <div className="bg-surface rounded-xl border border-border p-4 mb-6 shadow-sm space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div>
             <SearchField
               value={search}
               onChange={setSearch}
-              placeholder="Search by Subcontractor, Voucher #, Trade, Site..."
+              placeholder="Search by Subcontractor, Voucher #, Site..."
             />
           </div>
           <div>
@@ -991,6 +1015,30 @@ export function SubcontractorWeeklyPaymentsPage() {
               <option value="all">All Projects</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.project_name || p.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Select
+              value={selectedSiteId}
+              onChange={(e) => setSelectedSiteId(e.target.value)}
+              className="w-full"
+            >
+              <option value="all">All Sites</option>
+              {sites.map(s => (
+                <option key={s.id} value={String(s.id)}>{s.site_name || s.name}</option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Select
+              value={selectedContractorId}
+              onChange={(e) => setSelectedContractorId(e.target.value)}
+              className="w-full"
+            >
+              <option value="all">All Subcontractors</option>
+              {subcontractors.map(c => (
+                <option key={c.id} value={String(c.id)}>{c.contractor_name || c.name}</option>
               ))}
             </Select>
           </div>
@@ -1008,6 +1056,31 @@ export function SubcontractorWeeklyPaymentsPage() {
             </Select>
           </div>
         </div>
+
+        {(selectedProjectId !== 'all' || selectedSiteId !== 'all' || selectedContractorId !== 'all' || statusFilter !== 'all' || search.trim()) && (
+          <div className="flex items-center justify-between text-xs pt-2 border-t border-border text-text-muted">
+            <span className="flex items-center gap-2">
+              <span className="font-semibold text-text-primary">Active Filters:</span>
+              {selectedSiteId !== 'all' && <Badge variant="secondary" className="text-[11px]">Site: {sites.find(s => String(s.id) === String(selectedSiteId))?.site_name || `Site #${selectedSiteId}`}</Badge>}
+              {selectedContractorId !== 'all' && <Badge variant="secondary" className="text-[11px]">Subcontractor: {subcontractors.find(c => String(c.id) === String(selectedContractorId))?.contractor_name || `ID #${selectedContractorId}`}</Badge>}
+              {selectedProjectId !== 'all' && <Badge variant="secondary" className="text-[11px]">Project: {projects.find(p => String(p.id) === String(selectedProjectId))?.project_name || `ID #${selectedProjectId}`}</Badge>}
+              {statusFilter !== 'all' && <Badge variant="secondary" className="text-[11px]">Status: {statusFilter}</Badge>}
+              {search.trim() && <Badge variant="secondary" className="text-[11px]">Query: "{search}"</Badge>}
+            </span>
+            <button
+              onClick={() => {
+                setSelectedProjectId('all');
+                setSelectedSiteId('all');
+                setSelectedContractorId('all');
+                setStatusFilter('all');
+                setSearch('');
+              }}
+              className="text-primary hover:underline font-medium cursor-pointer"
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Data Table */}
@@ -1111,14 +1184,14 @@ export function SubcontractorWeeklyPaymentsPage() {
                             </Button>
                           )}
                           <button
-                            onClick={() => navigate(`/subcontracts/weekly-payments/new?id=${item.id}&contractor_id=${item.contractor_id}&date=${item.week_start}`)}
+                            onClick={() => navigate(`/subcontracts/weekly-payments/new?id=${item.id}&contractor_id=${item.contractor_id}&site_id=${item.site_id}&date=${item.week_start}`)}
                             title="Open Maistry Slip"
                             className="p-1.5 rounded text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => navigate(`/subcontracts/weekly-payments/new?id=${item.id}&contractor_id=${item.contractor_id}&date=${item.week_start}`)}
+                            onClick={() => navigate(`/subcontracts/weekly-payments/new?id=${item.id}&contractor_id=${item.contractor_id}&site_id=${item.site_id}&date=${item.week_start}`)}
                             title="Edit Maistry Slip"
                             className="p-1.5 rounded text-text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
                           >
