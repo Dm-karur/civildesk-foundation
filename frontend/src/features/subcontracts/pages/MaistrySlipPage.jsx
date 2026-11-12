@@ -11,7 +11,7 @@ import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { toast } from '../../../components/composite/Toast';
 import { projectsApi, subcontractsApi, dailyWagesApi, sitesApi } from '../../../api/apiservice';
-import { generateAndDownloadA5SlipFromItem, printA5SlipFromItem } from '../utils/a5SlipExportUtils';
+import { generateAndDownloadA5SlipFromItem, printA5SlipFromItem, numberToWords } from '../utils/a5SlipExportUtils';
 
 const LOCAL_SLIPS_KEY = 'mock_maistry_slips';
 const WEEKLY_PAYMENTS_KEY = 'mock_subcontractor_weekly_payments';
@@ -1377,6 +1377,16 @@ export function MaistrySlipPage() {
                     </td>
                   </tr>
                 )}
+
+                {/* Amount in Words */}
+                <tr className="border-t border-black bg-black/[0.02]">
+                  <td colSpan={12} className="py-2 px-3 text-xs border-t border-black">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-black uppercase tracking-wider text-[10.5px]">AMOUNT IN WORDS :</span>
+                      <span className="font-bold italic text-black text-xs font-mono">{numberToWords(enableMaistryPct ? grandTotal + maistryCommission : grandTotal)}</span>
+                    </div>
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>

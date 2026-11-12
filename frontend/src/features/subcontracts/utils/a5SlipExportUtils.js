@@ -1,3 +1,49 @@
+export function numberToWords(num) {
+  const amount = Math.round(Number(num) || 0);
+  if (amount <= 0) return 'Rupees Zero Only';
+
+  const singleDigits = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+  const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  function convertTwoDigits(val) {
+    if (val < 10) return singleDigits[val];
+    if (val < 20) return teens[val - 10];
+    const unit = val % 10;
+    return tens[Math.floor(val / 10)] + (unit ? ' ' + singleDigits[unit] : '');
+  }
+
+  function convertThreeDigits(val) {
+    const hundred = Math.floor(val / 100);
+    const rest = val % 100;
+    let res = '';
+    if (hundred) {
+      res += singleDigits[hundred] + ' Hundred';
+      if (rest) res += ' and ';
+    }
+    if (rest) {
+      res += convertTwoDigits(rest);
+    }
+    return res;
+  }
+
+  let crore = Math.floor(amount / 10000000);
+  let remainder = amount % 10000000;
+  let lakh = Math.floor(remainder / 100000);
+  remainder = remainder % 100000;
+  let thousand = Math.floor(remainder / 1000);
+  remainder = remainder % 1000;
+  let hundredAndRest = remainder;
+
+  const parts = [];
+  if (crore > 0) parts.push(convertThreeDigits(crore) + ' Crore');
+  if (lakh > 0) parts.push(convertTwoDigits(lakh) + ' Lakh');
+  if (thousand > 0) parts.push(convertTwoDigits(thousand) + ' Thousand');
+  if (hundredAndRest > 0) parts.push(convertThreeDigits(hundredAndRest));
+
+  return 'Rupees ' + parts.join(' ') + ' Only';
+}
+
 import html2pdf from 'html2pdf.js';
 
 export const exportA5SlipFromElement = async (element, filename = 'Weekly_Slip.pdf') => {
@@ -225,6 +271,13 @@ const buildA5SlipHtml = (item) => {
             </td>
           </tr>
           ${commissionHtml}
+          <!-- Amount in Words -->
+          <tr style="border-top: 1px solid #000; background: rgba(0,0,0,0.02);">
+            <td colspan="12" style="padding: 6px 8px; font-size: 10.5px;">
+              <span style="font-weight: bold; text-transform: uppercase; opacity: 0.85; margin-right: 6px;">AMOUNT IN WORDS:</span>
+              <span style="font-style: italic; font-weight: bold; font-family: monospace;">${numberToWords(hasCommission && commPct > 0 ? grandTotal + Math.round(grandTotal * (commPct / 100)) : grandTotal)}</span>
+            </td>
+          </tr>
         </tbody>
       </table>
 
