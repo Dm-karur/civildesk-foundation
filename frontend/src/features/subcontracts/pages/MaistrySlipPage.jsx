@@ -34,26 +34,7 @@ const INITIAL_MAISTRIES = [
 const DEFAULT_ROWS = [
   {
     category: 'LABOUR / MANPOWER',
-    items: [
-      { id: 'l-1', description: 'Head Mason', rate: 800, days: ['', '', '', '', '', '', ''] },
-      { id: 'l-2', description: 'Male Helper', rate: 400, days: ['', '', '', '', '', '', ''] },
-      { id: 'l-3', description: 'Female Helper', rate: 300, days: ['', '', '', '', '', '', ''] },
-    ]
-  },
-  {
-    category: 'EQUIPMENT / RENTALS',
-    items: [
-      { id: 'e-1', description: 'Mixer Machine Rent', rate: 1200, days: ['', '', '', '', '', '', ''] },
-      { id: 'e-2', description: 'Vibrator & Equipment Rent', rate: 500, days: ['', '', '', '', '', '', ''] }
-    ]
-  },
-  {
-    category: 'EXPENSES & CHARGES',
-    items: [
-      { id: 'ex-1', description: 'Binding Wire & Nails', rate: 0, days: ['', '', '', '', '', '', ''] },
-      { id: 'ex-2', description: 'Transport & Fuel', rate: 0, days: ['', '', '', '', '', '', ''] },
-      { id: 'ex-3', description: 'Tea & Food Allowance', rate: 0, days: ['', '', '', '', '', '', ''] }
-    ]
+    items: []
   }
 ];
 
@@ -163,8 +144,10 @@ export function MaistrySlipPage() {
       const expense = [];
 
       slip.lines.forEach((l, idx) => {
+        const qtyNum = Number(l.quantity || 0);
+        if (qtyNum <= 0) return; // Skip 0-quantity items
         const days = ['', '', '', '', '', '', ''];
-        days[dayIdx] = String(l.quantity || '');
+        days[dayIdx] = String(qtyNum);
         const itemObj = {
           id: `line-${l.id || idx}`,
           description: l.description,
@@ -177,11 +160,11 @@ export function MaistrySlipPage() {
         else labour.push(itemObj);
       });
 
-      setCategories([
-        { category: 'LABOUR / MANPOWER', items: labour.length > 0 ? labour : DEFAULT_ROWS[0].items },
-        { category: 'EQUIPMENT / RENTALS', items: equip.length > 0 ? equip : DEFAULT_ROWS[1].items },
-        { category: 'EXPENSES & CHARGES', items: expense.length > 0 ? expense : DEFAULT_ROWS[2].items }
-      ]);
+      const activeCats = [];
+      if (labour.length > 0) activeCats.push({ category: 'LABOUR / MANPOWER', items: labour });
+      if (equip.length > 0) activeCats.push({ category: 'EQUIPMENT / RENTALS', items: equip });
+      if (expense.length > 0) activeCats.push({ category: 'EXPENSES & CHARGES', items: expense });
+      setCategories(activeCats.length > 0 ? activeCats : [{ category: 'LABOUR / MANPOWER', items: [] }]);
     } else if (slip.trades && Array.isArray(slip.trades)) {
       const mon = getMondayOfWeek(slipStart || new Date());
       let dayIdx = 4;
@@ -410,23 +393,25 @@ export function MaistrySlipPage() {
   // Add Rows
   const handleAddRow = (targetCategory) => {
     setCategories(prev => {
-      return prev.map(cat => {
-        if (cat.category === targetCategory) {
-          return {
-            ...cat,
-            items: [
-              ...cat.items,
-              {
-                id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-                description: '',
-                rate: 0,
-                days: ['', '', '', '', '', '', '']
-              }
-            ]
-          };
-        }
-        return cat;
-      });
+      const exists = prev.some(cat => cat.category === targetCategory);
+      const newItem = {
+        id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        description: '',
+        rate: 0,
+        days: ['', '', '', '', '', '', '']
+      };
+      if (exists) {
+        return prev.map(cat => {
+          if (cat.category === targetCategory) {
+            return {
+              ...cat,
+              items: [...cat.items, newItem]
+            };
+          }
+          return cat;
+        });
+      }
+      return [...prev, { category: targetCategory, items: [newItem] }];
     });
   };
 
@@ -631,36 +616,31 @@ export function MaistrySlipPage() {
 
       // Aggregate quantities by trade item
       const itemAgg = {};
+      const itemOrder = [];
       let totalFound = 0;
       let totalCostFound = 0;
 
-      // Ensure configured template items (Head Mason, Male Helper, Female Helper) are always present
-      DEFAULT_ROWS[0].items.forEach(def => {
-        itemAgg[def.description] = {
-          rate: def.rate,
-          days: ['', '', '', '', '', '', ''],
-          classification: 'manpower',
-        };
-      });
-
+      // Only aggregate trades that were actually logged (no unwanted 0 rows)
       logsInRange.forEach(log => {
         const colIdx = dateMap[log.date];
         if (colIdx !== undefined && Array.isArray(log.trades)) {
           log.trades.forEach(tr => {
-            const itemName = tr.item || 'Labour';
-            if (!itemAgg[itemName]) {
-              itemAgg[itemName] = {
-                rate: Number(tr.rate) || 800,
+            const rawName = (tr.item || tr.description || 'Labour').trim();
+            if (!rawName) return;
+            if (!itemAgg[rawName]) {
+              itemOrder.push(rawName);
+              itemAgg[rawName] = {
+                rate: Number(tr.rate) || 0,
                 days: ['', '', '', '', '', '', ''],
-                classification: tr.classification || 'manpower',
+                classification: (tr.classification || 'manpower').toLowerCase(),
               };
             }
-            const currentVal = Number(itemAgg[itemName].days[colIdx]) || 0;
+            const currentVal = Number(itemAgg[rawName].days[colIdx]) || 0;
             const added = Number(tr.qty) || 0;
             if (added > 0) {
-              itemAgg[itemName].days[colIdx] = String(currentVal + added);
+              itemAgg[rawName].days[colIdx] = String(Math.round((currentVal + added) * 100) / 100);
               totalFound += added;
-              totalCostFound += added * (Number(tr.rate) || itemAgg[itemName].rate);
+              totalCostFound += added * (Number(tr.rate) || itemAgg[rawName].rate);
             }
           });
         }
@@ -671,7 +651,12 @@ export function MaistrySlipPage() {
         const equipItems = [];
         const expenseItems = [];
 
-        Object.entries(itemAgg).forEach(([name, data], idx) => {
+        itemOrder.forEach((name, idx) => {
+          const data = itemAgg[name];
+          const totalQty = data.days.reduce((sum, d) => sum + (Number(d) || 0), 0);
+          // If total shifts across the week is 0, DO NOT display it!
+          if (totalQty <= 0) return;
+
           const rowObj = {
             id: `synced-${idx}`,
             description: name,
@@ -687,20 +672,18 @@ export function MaistrySlipPage() {
           }
         });
 
-        setCategories([
-          {
-            category: 'LABOUR / MANPOWER',
-            items: labourItems.length > 0 ? labourItems : DEFAULT_ROWS[0].items,
-          },
-          {
-            category: 'EQUIPMENT / RENTALS',
-            items: equipItems.length > 0 ? equipItems : DEFAULT_ROWS[1].items,
-          },
-          {
-            category: 'EXPENSES & CHARGES',
-            items: expenseItems.length > 0 ? expenseItems : DEFAULT_ROWS[2].items,
-          },
-        ]);
+        const activeCats = [];
+        if (labourItems.length > 0) {
+          activeCats.push({ category: 'LABOUR / MANPOWER', items: labourItems });
+        }
+        if (equipItems.length > 0) {
+          activeCats.push({ category: 'EQUIPMENT / RENTALS', items: equipItems });
+        }
+        if (expenseItems.length > 0) {
+          activeCats.push({ category: 'EXPENSES & CHARGES', items: expenseItems });
+        }
+
+        setCategories(activeCats.length > 0 ? activeCats : [{ category: 'LABOUR / MANPOWER', items: [] }]);
 
         setSyncNotice({
           type: 'success',
@@ -1295,75 +1278,84 @@ export function MaistrySlipPage() {
                 </tr>
               </thead>
               <tbody>
-                {categories.map((cat, catIdx) => (
-                  <React.Fragment key={cat.category}>
-                    {/* Category Header Row */}
-                    <tr className="bg-black/5 border-b border-black font-bold text-[10px] tracking-wider uppercase">
-                      <td colSpan={12} className="p-1.5 pl-3">
-                        {cat.category}
-                      </td>
-                    </tr>
+                {categories.every(cat => !cat.items || cat.items.length === 0) ? (
+                  <tr>
+                    <td colSpan={12} className="py-10 px-4 text-center text-text-muted">
+                      <p className="font-semibold text-sm text-text-primary">No logged trades for this subcontractor in the selected week.</p>
+                      <p className="text-xs text-text-muted mt-1">Daily wage logs entered at Site Labour will appear here automatically, or use "+ Labour Row" above to add items manually.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  categories.filter(cat => cat.items && cat.items.length > 0).map((cat, catIdx) => (
+                    <React.Fragment key={cat.category}>
+                      {/* Category Header Row */}
+                      <tr className="bg-black/5 border-b border-black font-bold text-[10.5px] tracking-wider uppercase">
+                        <td colSpan={12} className="py-2 px-3">
+                          {cat.category}
+                        </td>
+                      </tr>
 
-                    {/* Category Items */}
-                    {cat.items.map((item, itemIdx) => {
-                      const currentRowNum = globalRowCounter++;
-                      const qty = Math.round(item.days.reduce((acc, d) => acc + (Number(d) || 0), 0) * 100) / 100;
-                      const amount = Math.round(qty * (Number(item.rate) || 0) * 100) / 100;
+                      {/* Category Items */}
+                      {cat.items.map((item, itemIdx) => {
+                        const currentRowNum = globalRowCounter++;
+                        const qty = Math.round(item.days.reduce((acc, d) => acc + (Number(d) || 0), 0) * 100) / 100;
+                        const amount = Math.round(qty * (Number(item.rate) || 0) * 100) / 100;
 
-                      return (
-                        <tr key={item.id} className="border-b border-black/80 hover:bg-black/5 group">
-                          <td className="p-1.5 border-r border-black text-center font-bold">
-                            {currentRowNum}
-                          </td>
-                          <td className="p-1 border-r border-black font-semibold">
-                            <div className="flex items-center justify-between">
+                        return (
+                          <tr key={item.id} className="border-b border-black/80 hover:bg-black/5 group">
+                            <td className="py-2 px-2 border-r border-black text-center font-bold text-xs">
+                              {currentRowNum}
+                            </td>
+                            <td className="py-2 px-3 border-r border-black font-semibold text-xs">
+                              <div className="flex items-center justify-between">
+                                <input
+                                  type="text"
+                                  value={item.description}
+                                  onChange={(e) => handleUpdateItem(catIdx, itemIdx, 'description', e.target.value)}
+                                  className="w-full bg-transparent border-none p-0 focus:outline-none focus:ring-0 text-xs font-semibold"
+                                  placeholder="Description..."
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteItem(catIdx, itemIdx)}
+                                  className="opacity-0 group-hover:opacity-100 text-black/40 hover:text-black p-0.5 print:hidden cursor-pointer"
+                                  title="Remove row"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-2 px-2 border-r border-black text-right text-xs">
                               <input
-                                type="text"
-                                value={item.description}
-                                onChange={(e) => handleUpdateItem(catIdx, itemIdx, 'description', e.target.value)}
-                                className="w-full bg-transparent border-none p-0 focus:outline-none focus:ring-0 text-xs font-semibold"
-                                placeholder="Description..."
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteItem(catIdx, itemIdx)}
-                                className="opacity-0 group-hover:opacity-100 text-black/40 hover:text-black p-0.5 print:hidden"
-                                title="Remove row"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </td>
-                          <td className="p-1 border-r border-black text-right">
-                            <input
-                              type="number"
-                              value={item.rate === 0 ? '0' : item.rate}
-                              onChange={(e) => handleUpdateItem(catIdx, itemIdx, 'rate', e.target.value)}
-                              className="w-full bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 text-xs font-mono font-medium"
-                            />
-                          </td>
-                          {item.days.map((dayVal, dayIdx) => (
-                            <td key={dayIdx} className="p-0.5 border-r border-black text-center">
-                              <input
-                                type="text"
-                                value={dayVal === '' ? '' : dayVal}
-                                onChange={(e) => handleUpdateDay(catIdx, itemIdx, dayIdx, e.target.value)}
-                                placeholder="-"
-                                className="w-full bg-transparent border-none p-0 text-center focus:outline-none focus:ring-0 text-xs font-mono placeholder:text-black/30"
+                                type="number"
+                                value={item.rate === 0 ? '0' : item.rate}
+                                onChange={(e) => handleUpdateItem(catIdx, itemIdx, 'rate', e.target.value)}
+                                className="w-full bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 text-xs font-mono font-medium"
                               />
                             </td>
-                          ))}
-                          <td className="p-1.5 border-r border-black text-center font-mono font-bold">
-                            {qty > 0 ? (qty % 1 === 0 ? qty : qty.toFixed(2)) : 0}
-                          </td>
-                          <td className="p-1.5 text-right font-mono font-bold">
-                            {amount > 0 ? (amount % 1 === 0 ? amount.toLocaleString('en-IN') : amount.toFixed(2)) : 0}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </React.Fragment>
-                ))}
+                            {item.days.map((dayVal, dayIdx) => (
+                              <td key={dayIdx} className="py-1 px-1 border-r border-black text-center text-xs">
+                                <input
+                                  type="text"
+                                  value={dayVal === '' ? '' : dayVal}
+                                  onChange={(e) => handleUpdateDay(catIdx, itemIdx, dayIdx, e.target.value)}
+                                  placeholder="-"
+                                  className="w-full bg-transparent border-none p-0 text-center focus:outline-none focus:ring-0 text-xs font-mono placeholder:text-black/30"
+                                />
+                              </td>
+                            ))}
+                            <td className="py-2 px-2 border-r border-black text-center font-mono font-bold text-xs">
+                              {qty > 0 ? (qty % 1 === 0 ? qty : qty.toFixed(2)) : 0}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono font-bold text-xs">
+                              {amount > 0 ? (amount % 1 === 0 ? amount.toLocaleString('en-IN') : amount.toFixed(2)) : 0}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))
+                )}
 
                 {/* Total Row */}
                 <tr className="border-t-2 border-black font-bold text-xs bg-black/5">
