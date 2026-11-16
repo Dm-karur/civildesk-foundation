@@ -822,7 +822,15 @@ export function MaistrySlipPage() {
     week_start: startDate,
     week_end: endDate,
     payment_date: endDate,
-    categories,
+    categories: categories
+      .map(cat => ({
+        ...cat,
+        items: (cat.items || []).filter(item => {
+          const qty = (item.days || []).reduce((acc, d) => acc + (Number(d) || 0), 0);
+          return qty > 0 || (Number(item.rate) || 0) > 0 || (item.description && item.description.trim() !== '');
+        })
+      }))
+      .filter(cat => cat.items && cat.items.length > 0),
     grand_total: grandTotal,
     enable_maistry_pct: enableMaistryPct,
     maistry_pct_value: maistryPctValue,
@@ -1197,7 +1205,7 @@ export function MaistrySlipPage() {
         @media print {
           @page {
             size: a5 landscape;
-            margin: 4mm 5mm 4mm 5mm;
+            margin: 3mm 4mm 3mm 4mm;
           }
           html, body {
             margin: 0 !important;
@@ -1220,7 +1228,7 @@ export function MaistrySlipPage() {
             width: 100% !important;
             max-width: 100% !important;
             margin: 0 !important;
-            padding: 6px 10px !important;
+            padding: 5px 8px !important;
             border: 1.5px solid #000 !important;
             box-sizing: border-box !important;
             page-break-inside: avoid !important;
@@ -1231,41 +1239,41 @@ export function MaistrySlipPage() {
       <div className="flex justify-center mb-8">
         <div
           id="maistry-printable-slip"
-          className={`w-full max-w-[850px] border-2 border-black p-4 sm:p-5 transition-colors shadow-sm mt-1 ${
+          className={`w-full max-w-[850px] border-2 border-black p-3 sm:p-4 transition-colors shadow-sm mt-1 ${
             slipTheme === 'yellow' ? 'bg-[#fffde7] text-black' : 'bg-white text-black'
           }`}
           style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace' }}
         >
           {/* Slip Header Box */}
-          <div className="border border-black mb-2 text-xs sm:text-[12px]">
+          <div className="border border-black mb-1.5 text-xs sm:text-[11.5px]">
             <div className="grid grid-cols-2 border-b border-black">
-              <div className="py-1 px-2.5 border-r border-black font-bold uppercase flex items-center gap-2">
+              <div className="py-1 px-2.5 border-r border-black font-bold uppercase flex items-center gap-2 whitespace-nowrap">
                 <span className="w-20 inline-block text-black/80 font-bold">CLIENT :</span>
-                <span className="font-extrabold text-black">{selectedSite.client}</span>
+                <span className="font-extrabold text-black truncate">{selectedSite.client}</span>
               </div>
-              <div className="py-1 px-2.5 font-bold uppercase flex items-center gap-2">
+              <div className="py-1 px-2.5 font-bold uppercase flex items-center gap-2 whitespace-nowrap">
                 <span className="w-20 inline-block text-black/80 font-bold">DATE :</span>
                 <span className="font-extrabold text-black font-mono">{endDate.split('-').reverse().join('-')}</span>
               </div>
             </div>
 
             <div className="grid grid-cols-2 border-b border-black">
-              <div className="py-1 px-2.5 border-r border-black font-bold uppercase flex items-center gap-2">
+              <div className="py-1 px-2.5 border-r border-black font-bold uppercase flex items-center gap-2 whitespace-nowrap">
                 <span className="w-20 inline-block text-black/80 font-bold">SITE :</span>
-                <span className="font-extrabold text-black">{selectedSite.name}</span>
+                <span className="font-extrabold text-black truncate">{selectedSite.name}</span>
               </div>
-              <div className="py-1 px-2.5 font-bold uppercase flex items-center gap-2">
+              <div className="py-1 px-2.5 font-bold uppercase flex items-center gap-2 whitespace-nowrap">
                 <span className="w-20 inline-block text-black/80 font-bold">TYPE :</span>
-                <span className="font-extrabold text-black">{selectedMaistry.trade}</span>
+                <span className="font-extrabold text-black truncate">{selectedMaistry.trade}</span>
               </div>
             </div>
 
             <div className="grid grid-cols-2">
-              <div className="py-1 px-2.5 border-r border-black font-bold uppercase flex items-center gap-2">
+              <div className="py-1 px-2.5 border-r border-black font-bold uppercase flex items-center gap-2 whitespace-nowrap">
                 <span className="w-20 inline-block text-black/80 font-bold">MAISTRY :</span>
-                <span className="font-extrabold text-black">{selectedMaistry.name}</span>
+                <span className="font-extrabold text-black truncate">{selectedMaistry.name}</span>
               </div>
-              <div className="py-1 px-2.5 font-bold uppercase flex items-center gap-2">
+              <div className="py-1 px-2.5 font-bold uppercase flex items-center gap-2 whitespace-nowrap">
                 <span className="w-20 inline-block text-black/80 font-bold">REF NO :</span>
                 <span className="font-extrabold text-black font-mono">{refNo}</span>
               </div>
@@ -1274,35 +1282,35 @@ export function MaistrySlipPage() {
 
           {/* Slip Table */}
           <div className="border border-black overflow-x-auto">
-            <table className="w-full text-xs sm:text-[12.5px] text-left border-collapse">
+            <table className="w-full text-xs sm:text-[11.5px] text-left border-collapse table-fixed">
               <thead>
-                <tr className="border-b border-black bg-black/5 font-extrabold uppercase text-[11px] tracking-wider">
-                  <th className="py-1 px-1.5 border-r border-black w-8 text-center">#</th>
-                  <th className="py-1 px-2.5 border-r border-black min-w-[180px]">Particulars / Description</th>
-                  <th className="py-1 px-2 border-r border-black w-16 text-right">Rate (₹)</th>
+                <tr className="border-b border-black bg-black/5 font-extrabold uppercase text-[10px] tracking-wider">
+                  <th className="py-1 px-1 border-r border-black w-8 text-center whitespace-nowrap align-middle">#</th>
+                  <th className="py-1 px-2 border-r border-black min-w-[170px] whitespace-nowrap align-middle">PARTICULARS / DESCRIPTION</th>
+                  <th className="py-1 px-1.5 border-r border-black w-20 text-right whitespace-nowrap align-middle">RATE (₹)</th>
                   {dateColumns.map((col, idx) => (
-                    <th key={idx} className="py-1 px-1 border-r border-black w-12 text-center text-[10.5px] font-bold">
+                    <th key={idx} className="py-1 px-0.5 border-r border-black w-12 text-center text-[9.5px] font-bold whitespace-nowrap align-middle">
                       {col.label}
                     </th>
                   ))}
-                  <th className="py-1 px-1.5 border-r border-black w-12 text-center">Qty</th>
-                  <th className="py-1 px-2.5 w-20 text-right">Amount</th>
+                  <th className="py-1 px-1 border-r border-black w-13 text-center whitespace-nowrap align-middle">QTY</th>
+                  <th className="py-1 px-2 w-22 text-right whitespace-nowrap align-middle">AMOUNT</th>
                 </tr>
               </thead>
               <tbody>
                 {categories.every(cat => !cat.items || cat.items.length === 0) ? (
                   <tr>
-                    <td colSpan={12} className="py-8 px-4 text-center text-text-muted">
+                    <td colSpan={12} className="py-6 px-4 text-center text-text-muted">
                       <p className="font-bold text-sm text-text-primary">No logged trades for this subcontractor in the selected week.</p>
-                      <p className="text-xs text-text-muted mt-1">Daily wage logs entered at Site Labour will appear here automatically, or use "+ Labour Row" above to add items manually.</p>
+                      <p className="text-xs text-text-muted mt-1">Daily wage logs entered at Site Labour will appear here automatically.</p>
                     </td>
                   </tr>
                 ) : (
                   categories.filter(cat => cat.items && cat.items.length > 0).map((cat, catIdx) => (
                     <React.Fragment key={cat.category}>
                       {/* Category Header Row */}
-                      <tr className="bg-black/10 border-b border-black font-black text-[11px] tracking-wider uppercase">
-                        <td colSpan={12} className="py-0.5 px-2.5">
+                      <tr className="bg-black/10 border-b border-black font-black text-[10.5px] tracking-wider uppercase">
+                        <td colSpan={12} className="py-0.5 px-2 whitespace-nowrap align-middle">
                           {cat.category}
                         </td>
                       </tr>
@@ -1315,16 +1323,16 @@ export function MaistrySlipPage() {
 
                         return (
                           <tr key={item.id} className="border-b border-black/80 hover:bg-black/5 group">
-                            <td className="py-1 px-1.5 border-r border-black text-center font-bold text-xs sm:text-[12.5px]">
+                            <td className="py-0.5 px-1 border-r border-black text-center font-bold text-xs whitespace-nowrap align-middle">
                               {currentRowNum}
                             </td>
-                            <td className="py-1 px-2.5 border-r border-black font-bold text-xs sm:text-[12.5px] text-black">
+                            <td className="py-0.5 px-2 border-r border-black font-bold text-xs text-black whitespace-nowrap align-middle">
                               <div className="flex items-center justify-between">
                                 <input
                                   type="text"
                                   value={item.description}
                                   onChange={(e) => handleUpdateItem(catIdx, itemIdx, 'description', e.target.value)}
-                                  className="w-full bg-transparent border-none p-0 focus:outline-none focus:ring-0 text-xs sm:text-[12.5px] font-bold text-black"
+                                  className="w-full bg-transparent border-none p-0 focus:outline-none focus:ring-0 text-xs font-bold text-black"
                                   placeholder="Description..."
                                 />
                                 <button
@@ -1337,29 +1345,29 @@ export function MaistrySlipPage() {
                                 </button>
                               </div>
                             </td>
-                            <td className="py-1 px-2 border-r border-black text-right text-xs sm:text-[12.5px]">
+                            <td className="py-0.5 px-1.5 border-r border-black text-right text-xs whitespace-nowrap align-middle">
                               <input
                                 type="number"
                                 value={item.rate === 0 ? '0' : item.rate}
                                 onChange={(e) => handleUpdateItem(catIdx, itemIdx, 'rate', e.target.value)}
-                                className="w-full bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 text-xs sm:text-[12.5px] font-mono font-bold"
+                                className="w-full bg-transparent border-none p-0 text-right focus:outline-none focus:ring-0 text-xs font-mono font-bold"
                               />
                             </td>
                             {item.days.map((dayVal, dayIdx) => (
-                              <td key={dayIdx} className="py-0.5 px-0.5 border-r border-black text-center text-xs sm:text-[12.5px]">
+                              <td key={dayIdx} className="py-0.5 px-0.5 border-r border-black text-center text-xs whitespace-nowrap align-middle">
                                 <input
                                   type="text"
                                   value={dayVal === '' ? '' : dayVal}
                                   onChange={(e) => handleUpdateDay(catIdx, itemIdx, dayIdx, e.target.value)}
                                   placeholder="-"
-                                  className="w-full bg-transparent border-none p-0 text-center focus:outline-none focus:ring-0 text-xs sm:text-[12.5px] font-mono font-bold placeholder:text-black/30"
+                                  className="w-full bg-transparent border-none p-0 text-center focus:outline-none focus:ring-0 text-xs font-mono font-bold placeholder:text-black/30"
                                 />
                               </td>
                             ))}
-                            <td className="py-1 px-1.5 border-r border-black text-center font-mono font-black text-xs sm:text-[12.5px]">
+                            <td className="py-0.5 px-1 border-r border-black text-center font-mono font-black text-xs whitespace-nowrap align-middle">
                               {qty > 0 ? (qty % 1 === 0 ? qty : qty.toFixed(2)) : 0}
                             </td>
-                            <td className="py-1 px-2.5 text-right font-mono font-black text-xs sm:text-[12.5px]">
+                            <td className="py-0.5 px-2 text-right font-mono font-black text-xs whitespace-nowrap align-middle">
                               {amount > 0 ? (amount % 1 === 0 ? amount.toLocaleString('en-IN') : amount.toFixed(2)) : 0}
                             </td>
                           </tr>
@@ -1371,20 +1379,20 @@ export function MaistrySlipPage() {
 
                 {/* Total Row */}
                 <tr className="border-t-2 border-black font-bold bg-black/5">
-                  <td colSpan={11} className="py-1.5 px-2.5 text-right uppercase tracking-wider font-black border-r border-black text-xs sm:text-[13px]">
+                  <td colSpan={11} className="py-1 px-2 text-right uppercase tracking-wider font-black border-r border-black text-xs sm:text-[12px] whitespace-nowrap align-middle">
                     TOTAL AMOUNT :
                   </td>
-                  <td className="py-1.5 px-2.5 text-right font-mono text-sm sm:text-[14.5px] font-black">
+                  <td className="py-1 px-2 text-right font-mono text-xs sm:text-[13.5px] font-black whitespace-nowrap align-middle">
                     ₹{grandTotal.toLocaleString('en-IN')}
                   </td>
                 </tr>
 
                 {enableMaistryPct && (
                   <tr className="border-t border-black font-bold text-xs">
-                    <td colSpan={11} className="py-1 px-2.5 text-right uppercase tracking-wider border-r border-black font-extrabold text-xs">
+                    <td colSpan={11} className="py-0.5 px-2 text-right uppercase tracking-wider border-r border-black font-extrabold text-xs whitespace-nowrap align-middle">
                       {selectedMaistry.name} ({maistryPctValue}%) :
                     </td>
-                    <td className="py-1 px-2.5 text-right font-mono text-xs font-bold">
+                    <td className="py-0.5 px-2 text-right font-mono text-xs font-bold whitespace-nowrap align-middle">
                       ₹{maistryCommission.toLocaleString('en-IN')}
                     </td>
                   </tr>
@@ -1392,10 +1400,10 @@ export function MaistrySlipPage() {
 
                 {/* Amount in Words */}
                 <tr className="border-t border-black bg-black/[0.02]">
-                  <td colSpan={12} className="py-1 px-2.5 border-t border-black">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-black uppercase tracking-wider text-[11px]">AMOUNT IN WORDS :</span>
-                      <span className="font-extrabold italic text-black text-[11.5px] font-mono">{numberToWords(enableMaistryPct ? grandTotal + maistryCommission : grandTotal)}</span>
+                  <td colSpan={12} className="py-1 px-2.5 border-t border-black whitespace-nowrap align-middle">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-extrabold text-black uppercase tracking-wider text-[10.5px]">AMOUNT IN WORDS :</span>
+                      <span className="font-extrabold italic text-black text-[11px] font-mono">{numberToWords(enableMaistryPct ? grandTotal + maistryCommission : grandTotal)}</span>
                     </div>
                   </td>
                 </tr>
@@ -1404,23 +1412,29 @@ export function MaistrySlipPage() {
           </div>
 
           {/* Signatures Area */}
-          <div className="grid grid-cols-3 gap-6 sm:gap-10 pt-4 text-center text-[11px] font-extrabold uppercase tracking-wider mt-4">
-            <div>
-              <div className="border-t-2 border-black pt-1">
-                Engineer
-              </div>
-            </div>
-            <div>
-              <div className="border-t-2 border-black pt-1">
-                Supervisor
-              </div>
-            </div>
-            <div>
-              <div className="border-t-2 border-black pt-1">
-                Receiver
-              </div>
-            </div>
-          </div>
+          <table className="w-full mt-3.5 text-center text-[10.5px] font-extrabold uppercase tracking-wider border-collapse">
+            <tbody>
+              <tr>
+                <td className="w-1/4 border-none p-0 align-top">
+                  <div className="border-t-2 border-black mx-2 sm:mx-3 pt-1">
+                    Engineer
+                  </div>
+                </td>
+                <td className="w-[12%] border-none p-0"></td>
+                <td className="w-1/4 border-none p-0 align-top">
+                  <div className="border-t-2 border-black mx-2 sm:mx-3 pt-1">
+                    Supervisor
+                  </div>
+                </td>
+                <td className="w-[12%] border-none p-0"></td>
+                <td className="w-1/4 border-none p-0 align-top">
+                  <div className="border-t-2 border-black mx-2 sm:mx-3 pt-1">
+                    Receiver
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </PageContainer>
