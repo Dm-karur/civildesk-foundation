@@ -52,7 +52,7 @@ export const exportA5SlipFromElement = async (element, filename = 'Weekly_Slip.p
   const pdfFilename = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
 
   const opt = {
-    margin: [8, 6, 6, 6], // mm: [top, left, bottom, right] for graceful downward placement
+    margin: [4, 5, 4, 5], // strictly fit single A5 landscape page
     filename: pdfFilename,
     image: { type: 'jpeg', quality: 0.98 },
     html2canvas: {
@@ -78,35 +78,35 @@ const buildA5SlipHtml = (item) => {
   try {
     const slips = JSON.parse(localStorage.getItem('mock_maistry_slips') || '[]');
     savedSlip = slips.find(s => s.id === item.id || s.ref_no === item.voucher_no || s.ref_no === item.id);
-  } catch {}
+  } catch (e) {
+    // Ignore error
+  }
 
-  const voucherNo = item.voucher_no || savedSlip?.ref_no || item.id || `SWP-${Date.now().toString().slice(-4)}`;
-  const contractorName = item.contractor_name || savedSlip?.maistry_name || 'Subcontractor';
-  const siteName = item.site_name || savedSlip?.site_name || item.project_name || 'Site';
-  const clientName = item.client_name || savedSlip?.client_name || 'KS Construction Client';
-  const tradeType = item.trade_category || item.trade || item.sub_work_title || savedSlip?.trade || 'MAISTRY';
-  const weekStart = item.week_start || savedSlip?.start_date || '';
-  const weekEnd = item.week_end || savedSlip?.end_date || '';
-  const dateStr = item.payment_date || weekEnd || savedSlip?.end_date || item.date || new Date().toISOString().split('T')[0];
+  const clientName = item.client_name || savedSlip?.client_name || 'Client';
+  const siteName = item.site_name || savedSlip?.site_name || 'Site Name';
+  const contractorName = item.contractor_name || savedSlip?.contractor_name || 'Subcontractor';
+  const tradeType = item.trade_category || savedSlip?.trade_category || 'Mason / Labour';
+  const dateStr = item.date || item.created_at || new Date().toISOString().split('T')[0];
+  const voucherNo = item.voucher_no || item.id || 'REF-001';
+  const grandTotal = Number(item.net_amount || item.total_amount || item.gross_amount || savedSlip?.grand_total || 0);
 
-  // Calculate 7-day columns
+  // Generate 7-day date headers
   const dateLabels = [];
   try {
-    const startBase = weekStart || (dateStr ? new Date(new Date(dateStr).getTime() - 6 * 86400000).toISOString().split('T')[0] : '');
-    const startParts = startBase.split('-').map(Number);
-    for (let i = 0; i < 7; i++) {
-      const cur = new Date(startParts[0], startParts[1] - 1, startParts[2] + i);
-      const day = String(cur.getDate()).padStart(2, '0');
-      const month = String(cur.getMonth() + 1).padStart(2, '0');
+    const end = new Date(dateStr);
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(end);
+      d.setDate(d.getDate() - i);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
       dateLabels.push(`${day}/${month}`);
     }
-  } catch {
-    dateLabels.push('07/09', '08/09', '09/09', '10/09', '11/09', '12/09', '13/09');
+  } catch (e) {
+    for (let i = 1; i <= 7; i++) dateLabels.push(`Day ${i}`);
   }
 
   let rowCounter = 1;
   let categoriesHtml = '';
-  let grandTotal = Number(item.grand_total ?? (savedSlip?.grand_total ?? (item.net_payable || item.gross_amount || item.total_cost || 0)));
 
   const activeCategories = (Array.isArray(item.categories) && item.categories.length > 0)
     ? item.categories
@@ -115,8 +115,8 @@ const buildA5SlipHtml = (item) => {
   if (activeCategories && activeCategories.length > 0) {
     activeCategories.forEach((cat) => {
       categoriesHtml += `
-        <tr style="border-bottom: 1px solid #000; background: rgba(0,0,0,0.08); font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">
-          <td colspan="12" style="padding: 5px 8px;">${cat.category}</td>
+        <tr style="border-bottom: 1px solid #000; background: rgba(0,0,0,0.08); font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">
+          <td colspan="12" style="padding: 2.5px 6px;">${cat.category}</td>
         </tr>
       `;
 
@@ -129,27 +129,26 @@ const buildA5SlipHtml = (item) => {
 
           const daysHtml = days.slice(0, 7).map(d => {
             const num = Number(d);
-            return `<td style="border-right: 1px solid #000; padding: 5px 2px; text-align: center; font-size: 13px; font-weight: 700; font-family: monospace;">${num > 0 ? (num % 1 === 0 ? num : num.toFixed(1)) : '-'}</td>`;
+            return `<td style="border-right: 1px solid #000; padding: 2px 1px; text-align: center; font-size: 12px; font-weight: 700; font-family: monospace;">${num > 0 ? (num % 1 === 0 ? num : num.toFixed(1)) : '-'}</td>`;
           }).join('');
 
           const qtyDisplay = qty > 0 ? (qty % 1 === 0 ? qty : qty.toFixed(1)) : 0;
           const amtDisplay = amt > 0 ? (amt % 1 === 0 ? amt.toLocaleString('en-IN') : amt.toFixed(2)) : 0;
 
           categoriesHtml += `
-            <tr style="border-bottom: 1px solid #000; font-size: 13px;">
-              <td style="border-right: 1px solid #000; padding: 5px 3px; text-align: center; font-weight: bold; width: 28px;">${rowCounter++}</td>
-              <td style="border-right: 1px solid #000; padding: 5px 8px; font-weight: 800; color: #000;">${it.description || 'Item'}</td>
-              <td style="border-right: 1px solid #000; padding: 5px 6px; text-align: right; font-weight: 700; font-family: monospace; width: 68px;">${rate}</td>
+            <tr style="border-bottom: 1px solid #000; font-size: 12px;">
+              <td style="border-right: 1px solid #000; padding: 2px 2px; text-align: center; font-weight: bold; width: 28px;">${rowCounter++}</td>
+              <td style="border-right: 1px solid #000; padding: 2px 6px; font-weight: 800; color: #000;">${it.description || 'Item'}</td>
+              <td style="border-right: 1px solid #000; padding: 2px 4px; text-align: right; font-weight: 700; font-family: monospace; width: 65px;">${rate}</td>
               ${daysHtml}
-              <td style="border-right: 1px solid #000; padding: 5px 3px; text-align: center; font-weight: 800; font-family: monospace; width: 48px;">${qtyDisplay}</td>
-              <td style="padding: 5px 8px; text-align: right; font-weight: 800; font-family: monospace; width: 85px;">${amtDisplay}</td>
+              <td style="border-right: 1px solid #000; padding: 2px 2px; text-align: center; font-weight: 800; font-family: monospace; width: 45px;">${qtyDisplay}</td>
+              <td style="padding: 2px 6px; text-align: right; font-weight: 800; font-family: monospace; width: 80px;">${amtDisplay}</td>
             </tr>
           `;
         });
       }
     });
   } else {
-    // Default categories if no saved categories
     let trades = [];
     if (Array.isArray(item.trades) && item.trades.length > 0) {
       trades = item.trades;
@@ -165,36 +164,36 @@ const buildA5SlipHtml = (item) => {
       const amt = Math.round((t.amount ? Number(t.amount) : qty * rate) * 100) / 100;
       const isSingleDay = qty > 0;
       const qtyDisplay = qty > 0 ? (qty % 1 === 0 ? qty : qty.toFixed(1)) : 0;
-      const amtDisplay = amt > 0 ? (amt % 1 === 0 ? amt : amt.toFixed(2)) : 0;
+      const amtDisplay = amt > 0 ? (amt % 1 === 0 ? amt.toLocaleString('en-IN') : amt.toFixed(2)) : 0;
 
       return `
         <tr style="border-bottom: 1px solid #000; font-size: 11px;">
-          <td style="border-right: 1px solid #000; padding: 3px 4px; text-align: center; font-weight: bold; width: 26px;">${rowCounter++}</td>
-          <td style="border-right: 1px solid #000; padding: 3px 6px; font-weight: 600;">${t.item || 'Labour'}</td>
-          <td style="border-right: 1px solid #000; padding: 3px 6px; text-align: right; font-family: monospace; width: 60px;">${rate}</td>
-          <td style="border-right: 1px solid #000; padding: 3px; text-align: center; font-family: monospace;">-</td>
-          <td style="border-right: 1px solid #000; padding: 3px; text-align: center; font-family: monospace;">-</td>
-          <td style="border-right: 1px solid #000; padding: 3px; text-align: center; font-family: monospace;">-</td>
-          <td style="border-right: 1px solid #000; padding: 3px; text-align: center; font-family: monospace;">-</td>
-          <td style="border-right: 1px solid #000; padding: 3px; text-align: center; font-weight: bold; font-family: monospace;">${isSingleDay ? qtyDisplay : '-'}</td>
-          <td style="border-right: 1px solid #000; padding: 3px; text-align: center; font-family: monospace;">-</td>
-          <td style="border-right: 1px solid #000; padding: 3px; text-align: center; font-family: monospace;">-</td>
-          <td style="border-right: 1px solid #000; padding: 3px 4px; text-align: center; font-weight: bold; font-family: monospace; width: 42px;">${qtyDisplay}</td>
-          <td style="padding: 3px 6px; text-align: right; font-weight: bold; font-family: monospace; width: 75px;">${amtDisplay}</td>
+          <td style="border-right: 1px solid #000; padding: 2px 3px; text-align: center; font-weight: bold; width: 26px;">${rowCounter++}</td>
+          <td style="border-right: 1px solid #000; padding: 2px 5px; font-weight: 600;">${t.item || 'Labour'}</td>
+          <td style="border-right: 1px solid #000; padding: 2px 5px; text-align: right; font-family: monospace; width: 55px;">${rate}</td>
+          <td style="border-right: 1px solid #000; padding: 2px; text-align: center; font-family: monospace;">-</td>
+          <td style="border-right: 1px solid #000; padding: 2px; text-align: center; font-family: monospace;">-</td>
+          <td style="border-right: 1px solid #000; padding: 2px; text-align: center; font-family: monospace;">-</td>
+          <td style="border-right: 1px solid #000; padding: 2px; text-align: center; font-family: monospace;">-</td>
+          <td style="border-right: 1px solid #000; padding: 2px; text-align: center; font-weight: bold; font-family: monospace;">${isSingleDay ? qtyDisplay : '-'}</td>
+          <td style="border-right: 1px solid #000; padding: 2px; text-align: center; font-family: monospace;">-</td>
+          <td style="border-right: 1px solid #000; padding: 2px; text-align: center; font-family: monospace;">-</td>
+          <td style="border-right: 1px solid #000; padding: 2px 3px; text-align: center; font-weight: bold; font-family: monospace; width: 40px;">${qtyDisplay}</td>
+          <td style="padding: 2px 5px; text-align: right; font-weight: bold; font-family: monospace; width: 70px;">${amtDisplay}</td>
         </tr>
       `;
     }).join('');
 
     categoriesHtml = `
       <tr style="border-bottom: 1px solid #000; background: rgba(0,0,0,0.04); font-size: 10px; font-weight: bold; text-transform: uppercase;">
-        <td colspan="12" style="padding: 3px 6px;">LABOUR / MANPOWER</td>
+        <td colspan="12" style="padding: 2px 5px;">LABOUR / MANPOWER</td>
       </tr>
       ${tradeRowsHtml}
       <tr style="border-bottom: 1px solid #000; background: rgba(0,0,0,0.04); font-size: 10px; font-weight: bold; text-transform: uppercase;">
-        <td colspan="12" style="padding: 3px 6px;">EQUIPMENT / RENTALS</td>
+        <td colspan="12" style="padding: 2px 5px;">EQUIPMENT / RENTALS</td>
       </tr>
       <tr style="border-bottom: 1px solid #000; background: rgba(0,0,0,0.04); font-size: 10px; font-weight: bold; text-transform: uppercase;">
-        <td colspan="12" style="padding: 3px 6px;">EXPENSES & CHARGES</td>
+        <td colspan="12" style="padding: 2px 5px;">EXPENSES & CHARGES</td>
       </tr>
     `;
   }
@@ -207,10 +206,10 @@ const buildA5SlipHtml = (item) => {
     const comm = Math.round(grandTotal * (commPct / 100));
     commissionHtml = `
       <tr style="border-top: 1px solid #000; font-size: 11px;">
-        <td colspan="11" style="border-right: 1px solid #000; padding: 4px 8px; text-align: right; text-transform: uppercase; font-weight: bold;">
+        <td colspan="11" style="border-right: 1px solid #000; padding: 2.5px 6px; text-align: right; text-transform: uppercase; font-weight: bold;">
           ${contractorName} (${commPct}%) :
         </td>
-        <td style="padding: 4px 8px; text-align: right; font-weight: bold; font-family: monospace;">
+        <td style="padding: 2.5px 6px; text-align: right; font-weight: bold; font-family: monospace;">
           ₹${comm.toLocaleString('en-IN')}
         </td>
       </tr>
@@ -218,85 +217,84 @@ const buildA5SlipHtml = (item) => {
   }
 
   return `
-    <div style="width: 770px; margin: 0 auto; padding: 14px 16px; background: #fff; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; color: #000; border: 2px solid #000; page-break-inside: avoid;">
+    <div style="width: 100%; max-width: 770px; margin: 0 auto; padding: 6px 10px; background: #fff; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; color: #000; border: 1.5px solid #000; page-break-inside: avoid; break-inside: avoid;">
       <!-- Header Box -->
-      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 12px; font-size: 13px;">
+      <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 6px; font-size: 11.5px;">
         <tr style="border-bottom: 1px solid #000;">
-          <td style="border-right: 1px solid #000; padding: 6px 10px; font-weight: bold; text-transform: uppercase; width: 50%;">
-            <span style="display: inline-block; width: 85px; font-weight: bold; opacity: 0.85;">CLIENT :</span> <span style="font-weight: 800;">${clientName}</span>
+          <td style="border-right: 1px solid #000; padding: 2.5px 8px; font-weight: bold; text-transform: uppercase; width: 50%;">
+            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">CLIENT :</span> <span style="font-weight: 800;">${clientName}</span>
           </td>
-          <td style="padding: 6px 10px; font-weight: bold; text-transform: uppercase; width: 50%;">
-            <span style="display: inline-block; width: 85px; font-weight: bold; opacity: 0.85;">DATE :</span> <span style="font-weight: 800;">${dateStr.split('-').reverse().join('-')}</span>
+          <td style="padding: 2.5px 8px; font-weight: bold; text-transform: uppercase; width: 50%;">
+            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">DATE :</span> <span style="font-weight: 800;">${dateStr.split('-').reverse().join('-')}</span>
           </td>
         </tr>
         <tr style="border-bottom: 1px solid #000;">
-          <td style="border-right: 1px solid #000; padding: 6px 10px; font-weight: bold; text-transform: uppercase;">
-            <span style="display: inline-block; width: 85px; font-weight: bold; opacity: 0.85;">SITE :</span> <span style="font-weight: 800;">${siteName}</span>
+          <td style="border-right: 1px solid #000; padding: 2.5px 8px; font-weight: bold; text-transform: uppercase;">
+            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">SITE :</span> <span style="font-weight: 800;">${siteName}</span>
           </td>
-          <td style="padding: 6px 10px; font-weight: bold; text-transform: uppercase;">
-            <span style="display: inline-block; width: 85px; font-weight: bold; opacity: 0.85;">TYPE :</span> <span style="font-weight: 800;">${tradeType}</span>
+          <td style="padding: 2.5px 8px; font-weight: bold; text-transform: uppercase;">
+            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">TYPE :</span> <span style="font-weight: 800;">${tradeType}</span>
           </td>
         </tr>
         <tr>
-          <td style="border-right: 1px solid #000; padding: 6px 10px; font-weight: bold; text-transform: uppercase;">
-            <span style="display: inline-block; width: 85px; font-weight: bold; opacity: 0.85;">MAISTRY :</span> <span style="font-weight: 800;">${contractorName}</span>
+          <td style="border-right: 1px solid #000; padding: 2.5px 8px; font-weight: bold; text-transform: uppercase;">
+            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">MAISTRY :</span> <span style="font-weight: 800;">${contractorName}</span>
           </td>
-          <td style="padding: 6px 10px; font-weight: bold; text-transform: uppercase;">
-            <span style="display: inline-block; width: 85px; font-weight: bold; opacity: 0.85;">REF NO :</span> <span style="font-weight: 800;">${voucherNo}</span>
+          <td style="padding: 2.5px 8px; font-weight: bold; text-transform: uppercase;">
+            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">REF NO :</span> <span style="font-weight: 800;">${voucherNo}</span>
           </td>
         </tr>
       </table>
 
       <!-- Main Table -->
-      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; font-size: 13px; margin-bottom: 12px;">
+      <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 12px; margin-bottom: 6px;">
         <thead>
-          <tr style="border-bottom: 1.5px solid #000; background: rgba(0,0,0,0.06); font-size: 11.5px; font-weight: 800; text-transform: uppercase;">
-            <th style="border-right: 1px solid #000; padding: 6px 3px; width: 28px; text-align: center;">#</th>
-            <th style="border-right: 1px solid #000; padding: 6px 8px; text-align: left;">PARTICULARS / DESCRIPTION</th>
-            <th style="border-right: 1px solid #000; padding: 6px 6px; width: 68px; text-align: right;">RATE (₹)</th>
-            ${dateLabels.map(lbl => `<th style="border-right: 1px solid #000; padding: 6px 2px; width: 42px; text-align: center; font-size: 11px; font-weight: 700;">${lbl}</th>`).join('')}
-            <th style="border-right: 1px solid #000; padding: 6px 4px; width: 48px; text-align: center;">QTY</th>
-            <th style="padding: 6px 8px; width: 85px; text-align: right;">AMOUNT</th>
+          <tr style="border-bottom: 1px solid #000; background: rgba(0,0,0,0.06); font-size: 10.5px; font-weight: 800; text-transform: uppercase;">
+            <th style="border-right: 1px solid #000; padding: 2.5px 2px; width: 28px; text-align: center;">#</th>
+            <th style="border-right: 1px solid #000; padding: 2.5px 6px; text-align: left;">PARTICULARS / DESCRIPTION</th>
+            <th style="border-right: 1px solid #000; padding: 2.5px 4px; width: 65px; text-align: right;">RATE (₹)</th>
+            ${dateLabels.map(lbl => `<th style="border-right: 1px solid #000; padding: 2.5px 1px; width: 42px; text-align: center; font-size: 10px; font-weight: 700;">${lbl}</th>`).join('')}
+            <th style="border-right: 1px solid #000; padding: 2.5px 2px; width: 45px; text-align: center;">QTY</th>
+            <th style="padding: 2.5px 6px; width: 80px; text-align: right;">AMOUNT</th>
           </tr>
         </thead>
         <tbody>
           ${categoriesHtml}
           <!-- Total Row -->
-          <tr style="border-top: 2px solid #000; font-weight: bold; background: rgba(0,0,0,0.05);">
-            <td colspan="11" style="border-right: 1px solid #000; padding: 7px 10px; text-align: right; font-size: 13.5px; text-transform: uppercase; font-weight: 900;">
+          <tr style="border-top: 1.5px solid #000; font-weight: bold; background: rgba(0,0,0,0.05);">
+            <td colspan="11" style="border-right: 1px solid #000; padding: 3px 8px; text-align: right; font-size: 12.5px; text-transform: uppercase; font-weight: 900;">
               TOTAL AMOUNT :
             </td>
-            <td style="padding: 7px 10px; text-align: right; font-size: 15.5px; font-weight: 900; font-family: monospace;">
+            <td style="padding: 3px 8px; text-align: right; font-size: 14px; font-weight: 900; font-family: monospace;">
               ₹${Math.round(grandTotal).toLocaleString('en-IN')}
             </td>
           </tr>
           ${commissionHtml}
           <!-- Amount in Words -->
           <tr style="border-top: 1px solid #000; background: rgba(0,0,0,0.02);">
-            <td colspan="12" style="padding: 8px 10px; font-size: 12.5px;">
-              <span style="font-weight: 800; text-transform: uppercase; opacity: 0.85; margin-right: 8px;">AMOUNT IN WORDS:</span>
-              <span style="font-style: italic; font-weight: 800; font-family: monospace; font-size: 13px;">${numberToWords(hasCommission && commPct > 0 ? grandTotal + Math.round(grandTotal * (commPct / 100)) : grandTotal)}</span>
+            <td colspan="12" style="padding: 3px 8px; font-size: 11px;">
+              <span style="font-weight: 800; text-transform: uppercase; opacity: 0.85; margin-right: 6px;">AMOUNT IN WORDS:</span>
+              <span style="font-style: italic; font-weight: 800; font-family: monospace; font-size: 11.5px;">${numberToWords(hasCommission && commPct > 0 ? grandTotal + Math.round(grandTotal * (commPct / 100)) : grandTotal)}</span>
             </td>
           </tr>
         </tbody>
       </table>
 
       <!-- Signatures Area -->
-      <div style="display: flex; justify-content: space-between; text-align: center; font-size: 12.5px; font-weight: 800; text-transform: uppercase; margin-top: 36px; padding: 0 20px;">
-        <div style="width: 170px;">
-          <div style="border-top: 2px solid #000; padding-top: 6px;">ENGINEER</div>
+      <div style="display: flex; justify-content: space-between; text-align: center; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-top: 14px; padding: 0 15px;">
+        <div style="width: 140px;">
+          <div style="border-top: 1.5px solid #000; padding-top: 4px;">ENGINEER</div>
         </div>
-        <div style="width: 170px;">
-          <div style="border-top: 2px solid #000; padding-top: 6px;">SUPERVISOR</div>
+        <div style="width: 140px;">
+          <div style="border-top: 1.5px solid #000; padding-top: 4px;">SUPERVISOR</div>
         </div>
-        <div style="width: 170px;">
-          <div style="border-top: 2px solid #000; padding-top: 6px;">RECEIVER</div>
+        <div style="width: 140px;">
+          <div style="border-top: 1.5px solid #000; padding-top: 4px;">RECEIVER</div>
         </div>
       </div>
     </div>
   `;
 };
-
 export const generateAndDownloadA5SlipFromItem = async (item) => {
   if (!item) return;
 
@@ -338,14 +336,14 @@ export const printA5SlipFromItem = (item) => {
         <style>
           @page {
             size: a5 landscape;
-            margin: 8mm 6mm 6mm 6mm;
+            margin: 4mm 5mm 4mm 5mm;
           }
           * {
             box-sizing: border-box;
           }
           body {
             margin: 0;
-            padding: 10px 0 0 0;
+            padding: 4px 0 0 0;
             background: #fff;
             color: #000;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -354,7 +352,7 @@ export const printA5SlipFromItem = (item) => {
           }
           @media print {
             body {
-              padding: 6px 0 0 0;
+              padding: 0;
             }
           }
         </style>
