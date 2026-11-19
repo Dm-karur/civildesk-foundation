@@ -91,7 +91,39 @@ const buildA5SlipHtml = (item) => {
   const tradeType = item.trade_category || savedSlip?.trade_category || 'Mason / Labour';
   const dateStr = item.date || item.created_at || new Date().toISOString().split('T')[0];
   const voucherNo = item.voucher_no || item.id || 'REF-001';
-  const grandTotal = Number(item.net_amount || item.total_amount || item.gross_amount || savedSlip?.grand_total || 0);
+
+  // Only take categories that have non-empty items to prevent blank category divider rows
+  const rawCats = (Array.isArray(item.categories) && item.categories.length > 0)
+    ? item.categories
+    : (Array.isArray(savedSlip?.categories) && savedSlip.categories.length > 0 ? savedSlip.categories : null);
+
+  const activeCategories = rawCats ? rawCats.map(cat => ({
+    ...cat,
+    items: Array.isArray(cat.items) ? cat.items.filter(it => {
+      const days = Array.isArray(it.days) ? it.days : [];
+      const qty = days.reduce((sum, d) => sum + (Number(d) || 0), 0);
+      return qty > 0 || (Number(it.rate) || 0) > 0 || (it.description && it.description.trim() !== '');
+    }) : []
+  })).filter(cat => cat.items && cat.items.length > 0) : null;
+
+  // Calculate grandTotal accurately from item or sum of items
+  let grandTotal = Number(item.grand_total || item.net_payable || item.net_amount || item.total_amount || item.gross_amount || savedSlip?.grand_total || 0);
+  if (grandTotal <= 0 && activeCategories && activeCategories.length > 0) {
+    let calculatedSum = 0;
+    activeCategories.forEach(cat => {
+      if (Array.isArray(cat.items)) {
+        cat.items.forEach(it => {
+          const days = Array.isArray(it.days) ? it.days : [];
+          const qty = days.reduce((sum, d) => sum + (Number(d) || 0), 0);
+          const rate = Number(it.rate) || 0;
+          calculatedSum += qty * rate;
+        });
+      }
+    });
+    if (calculatedSum > 0) {
+      grandTotal = Math.round(calculatedSum * 100) / 100;
+    }
+  }
 
   // Generate 7-day date headers
   const dateLabels = [];
@@ -111,25 +143,11 @@ const buildA5SlipHtml = (item) => {
   let rowCounter = 1;
   let categoriesHtml = '';
 
-  // Only take categories that have non-empty items to prevent blank category divider rows
-  const rawCats = (Array.isArray(item.categories) && item.categories.length > 0)
-    ? item.categories
-    : (Array.isArray(savedSlip?.categories) && savedSlip.categories.length > 0 ? savedSlip.categories : null);
-
-  const activeCategories = rawCats ? rawCats.map(cat => ({
-    ...cat,
-    items: Array.isArray(cat.items) ? cat.items.filter(it => {
-      const days = Array.isArray(it.days) ? it.days : [];
-      const qty = days.reduce((sum, d) => sum + (Number(d) || 0), 0);
-      return qty > 0 || (Number(it.rate) || 0) > 0 || (it.description && it.description.trim() !== '');
-    }) : []
-  })).filter(cat => cat.items && cat.items.length > 0) : null;
-
   if (activeCategories && activeCategories.length > 0) {
     activeCategories.forEach((cat) => {
       categoriesHtml += `
-        <tr style="border-bottom: 1px solid #000; background: rgba(0,0,0,0.08); font-size: 10.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">
-          <td colspan="12" style="padding: 2px 6px; vertical-align: middle; white-space: nowrap;">${cat.category}</td>
+        <tr style="border-bottom: 1.5px solid #000; background: rgba(0,0,0,0.08); font-size: 13px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px;">
+          <td colspan="12" style="padding: 3.5px 8px; vertical-align: middle; white-space: nowrap;">${cat.category}</td>
         </tr>
       `;
 
@@ -142,20 +160,20 @@ const buildA5SlipHtml = (item) => {
 
           const daysHtml = days.slice(0, 7).map(d => {
             const num = Number(d);
-            return `<td style="border-right: 1px solid #000; padding: 2px 1px; text-align: center; font-size: 11.5px; font-weight: 700; font-family: monospace; vertical-align: middle; white-space: nowrap;">${num > 0 ? (num % 1 === 0 ? num : num.toFixed(1)) : '-'}</td>`;
+            return `<td style="border-right: 1px solid #000; padding: 4px 1px; text-align: center; font-size: 13.5px; font-weight: 700; font-family: monospace; vertical-align: middle; white-space: nowrap;">${num > 0 ? (num % 1 === 0 ? num : num.toFixed(1)) : '-'}</td>`;
           }).join('');
 
           const qtyDisplay = qty > 0 ? (qty % 1 === 0 ? qty : qty.toFixed(1)) : 0;
           const amtDisplay = amt > 0 ? (amt % 1 === 0 ? amt.toLocaleString('en-IN') : amt.toFixed(2)) : 0;
 
           categoriesHtml += `
-            <tr style="border-bottom: 1px solid #000; font-size: 11.5px;">
-              <td style="border-right: 1px solid #000; padding: 2px 2px; text-align: center; font-weight: bold; width: 26px; vertical-align: middle; white-space: nowrap;">${rowCounter++}</td>
-              <td style="border-right: 1px solid #000; padding: 2px 6px; font-weight: 800; color: #000; vertical-align: middle; white-space: nowrap;">${it.description || 'Item'}</td>
-              <td style="border-right: 1px solid #000; padding: 2px 4px; text-align: right; font-weight: 700; font-family: monospace; width: 72px; vertical-align: middle; white-space: nowrap;">${rate}</td>
+            <tr style="border-bottom: 1px solid #000; font-size: 13.5px;">
+              <td style="border-right: 1px solid #000; padding: 4px 2px; text-align: center; font-weight: bold; vertical-align: middle; white-space: nowrap; font-size: 13px;">${rowCounter++}</td>
+              <td style="border-right: 1px solid #000; padding: 4px 6px; font-weight: 800; font-size: 14px; color: #000; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${it.description || 'Item'}</td>
+              <td style="border-right: 1px solid #000; padding: 4px 4px; text-align: right; font-weight: 700; font-family: monospace; font-size: 13.5px; vertical-align: middle; white-space: nowrap;">${rate}</td>
               ${daysHtml}
-              <td style="border-right: 1px solid #000; padding: 2px 2px; text-align: center; font-weight: 800; font-family: monospace; width: 46px; vertical-align: middle; white-space: nowrap;">${qtyDisplay}</td>
-              <td style="padding: 2px 6px; text-align: right; font-weight: 800; font-family: monospace; width: 82px; vertical-align: middle; white-space: nowrap;">${amtDisplay}</td>
+              <td style="border-right: 1px solid #000; padding: 4px 2px; text-align: center; font-weight: 800; font-family: monospace; font-size: 14px; vertical-align: middle; white-space: nowrap;">${qtyDisplay}</td>
+              <td style="padding: 4px 6px; text-align: right; font-weight: 800; font-family: monospace; font-size: 14px; vertical-align: middle; white-space: nowrap;">${amtDisplay}</td>
             </tr>
           `;
         });
@@ -180,26 +198,26 @@ const buildA5SlipHtml = (item) => {
       const amtDisplay = amt > 0 ? (amt % 1 === 0 ? amt.toLocaleString('en-IN') : amt.toFixed(2)) : 0;
 
       return `
-        <tr style="border-bottom: 1px solid #000; font-size: 11px;">
-          <td style="border-right: 1px solid #000; padding: 2px 3px; text-align: center; font-weight: bold; width: 26px; vertical-align: middle; white-space: nowrap;">${rowCounter++}</td>
-          <td style="border-right: 1px solid #000; padding: 2px 5px; font-weight: 600; vertical-align: middle; white-space: nowrap;">${t.item || 'Labour'}</td>
-          <td style="border-right: 1px solid #000; padding: 2px 4px; text-align: right; font-family: monospace; width: 72px; vertical-align: middle; white-space: nowrap;">${rate}</td>
-          <td style="border-right: 1px solid #000; padding: 2px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
-          <td style="border-right: 1px solid #000; padding: 2px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
-          <td style="border-right: 1px solid #000; padding: 2px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
-          <td style="border-right: 1px solid #000; padding: 2px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
-          <td style="border-right: 1px solid #000; padding: 2px 1px; text-align: center; font-weight: bold; font-family: monospace; vertical-align: middle; white-space: nowrap;">${isSingleDay ? qtyDisplay : '-'}</td>
-          <td style="border-right: 1px solid #000; padding: 2px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
-          <td style="border-right: 1px solid #000; padding: 2px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
-          <td style="border-right: 1px solid #000; padding: 2px 2px; text-align: center; font-weight: bold; font-family: monospace; width: 46px; vertical-align: middle; white-space: nowrap;">${qtyDisplay}</td>
-          <td style="padding: 2px 5px; text-align: right; font-weight: bold; font-family: monospace; width: 82px; vertical-align: middle; white-space: nowrap;">${amtDisplay}</td>
+        <tr style="border-bottom: 1px solid #000; font-size: 13.5px;">
+          <td style="border-right: 1px solid #000; padding: 4px 2px; text-align: center; font-weight: bold; vertical-align: middle; white-space: nowrap; font-size: 13px;">${rowCounter++}</td>
+          <td style="border-right: 1px solid #000; padding: 4px 6px; font-weight: 800; font-size: 14px; vertical-align: middle; white-space: nowrap;">${t.item || 'Labour'}</td>
+          <td style="border-right: 1px solid #000; padding: 4px 4px; text-align: right; font-family: monospace; font-size: 13.5px; vertical-align: middle; white-space: nowrap;">${rate}</td>
+          <td style="border-right: 1px solid #000; padding: 4px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
+          <td style="border-right: 1px solid #000; padding: 4px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
+          <td style="border-right: 1px solid #000; padding: 4px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
+          <td style="border-right: 1px solid #000; padding: 4px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
+          <td style="border-right: 1px solid #000; padding: 4px 1px; text-align: center; font-weight: bold; font-family: monospace; vertical-align: middle; white-space: nowrap;">${isSingleDay ? qtyDisplay : '-'}</td>
+          <td style="border-right: 1px solid #000; padding: 4px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
+          <td style="border-right: 1px solid #000; padding: 4px 1px; text-align: center; font-family: monospace; vertical-align: middle; white-space: nowrap;">-</td>
+          <td style="border-right: 1px solid #000; padding: 4px 2px; text-align: center; font-weight: bold; font-family: monospace; font-size: 14px; vertical-align: middle; white-space: nowrap;">${qtyDisplay}</td>
+          <td style="padding: 4px 6px; text-align: right; font-weight: bold; font-family: monospace; font-size: 14px; vertical-align: middle; white-space: nowrap;">${amtDisplay}</td>
         </tr>
       `;
     }).join('');
 
     categoriesHtml = `
-      <tr style="border-bottom: 1px solid #000; background: rgba(0,0,0,0.04); font-size: 10px; font-weight: bold; text-transform: uppercase;">
-        <td colspan="12" style="padding: 2px 5px; vertical-align: middle; white-space: nowrap;">LABOUR / MANPOWER</td>
+      <tr style="border-bottom: 1.5px solid #000; background: rgba(0,0,0,0.04); font-size: 13px; font-weight: bold; text-transform: uppercase;">
+        <td colspan="12" style="padding: 3.5px 8px; vertical-align: middle; white-space: nowrap;">LABOUR / MANPOWER</td>
       </tr>
       ${tradeRowsHtml}
     `;
@@ -212,11 +230,11 @@ const buildA5SlipHtml = (item) => {
   if (hasCommission && commPct > 0) {
     const comm = Math.round(grandTotal * (commPct / 100));
     commissionHtml = `
-      <tr style="border-top: 1px solid #000; font-size: 11px;">
-        <td colspan="11" style="border-right: 1px solid #000; padding: 2.5px 6px; text-align: right; text-transform: uppercase; font-weight: bold; vertical-align: middle; white-space: nowrap;">
+      <tr style="border-top: 1.5px solid #000; font-size: 13px;">
+        <td colspan="11" style="border-right: 1px solid #000; padding: 3px 8px; text-align: right; text-transform: uppercase; font-weight: bold; vertical-align: middle; white-space: nowrap;">
           ${contractorName} (${commPct}%) :
         </td>
-        <td style="padding: 2.5px 6px; text-align: right; font-weight: bold; font-family: monospace; vertical-align: middle; white-space: nowrap;">
+        <td style="padding: 3px 6px; text-align: right; font-weight: bold; font-family: monospace; vertical-align: middle; white-space: nowrap; font-size: 14px;">
           ₹${comm.toLocaleString('en-IN')}
         </td>
       </tr>
@@ -224,82 +242,82 @@ const buildA5SlipHtml = (item) => {
   }
 
   return `
-    <div style="width: 790px; margin: 0 auto; padding: 6px 8px; background: #fff; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; color: #000; border: 1.5px solid #000; page-break-inside: avoid; break-inside: avoid;">
+    <div style="width: 100%; max-width: 100%; margin: 0 auto; padding: 6px 8px; background: #fff; box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; color: #000; border: 2px solid #000; page-break-inside: avoid; break-inside: avoid;">
       <!-- Header Box -->
-      <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; margin-bottom: 5px; font-size: 11.5px; table-layout: fixed;">
+      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; margin-bottom: 6px; font-size: 13.5px; table-layout: fixed;">
         <tr style="border-bottom: 1px solid #000;">
-          <td style="border-right: 1px solid #000; padding: 2.5px 6px; font-weight: bold; text-transform: uppercase; width: 50%; vertical-align: middle; white-space: nowrap;">
-            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">CLIENT :</span> <span style="font-weight: 800;">${clientName}</span>
+          <td style="border-right: 1px solid #000; padding: 4px 8px; font-weight: bold; text-transform: uppercase; width: 50%; vertical-align: middle; white-space: nowrap;">
+            <span style="display: inline-block; width: 85px; font-weight: 800; opacity: 0.85; font-size: 13px;">CLIENT :</span> <span style="font-weight: 900; font-size: 14.5px;">${clientName}</span>
           </td>
-          <td style="padding: 2.5px 6px; font-weight: bold; text-transform: uppercase; width: 50%; vertical-align: middle; white-space: nowrap;">
-            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">DATE :</span> <span style="font-weight: 800;">${dateStr.split('-').reverse().join('-')}</span>
+          <td style="padding: 4px 8px; font-weight: bold; text-transform: uppercase; width: 50%; vertical-align: middle; white-space: nowrap;">
+            <span style="display: inline-block; width: 85px; font-weight: 800; opacity: 0.85; font-size: 13px;">DATE :</span> <span style="font-weight: 900; font-size: 14.5px;">${dateStr.split('-').reverse().join('-')}</span>
           </td>
         </tr>
         <tr style="border-bottom: 1px solid #000;">
-          <td style="border-right: 1px solid #000; padding: 2.5px 6px; font-weight: bold; text-transform: uppercase; vertical-align: middle; white-space: nowrap;">
-            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">SITE :</span> <span style="font-weight: 800;">${siteName}</span>
+          <td style="border-right: 1px solid #000; padding: 4px 8px; font-weight: bold; text-transform: uppercase; vertical-align: middle; white-space: nowrap;">
+            <span style="display: inline-block; width: 85px; font-weight: 800; opacity: 0.85; font-size: 13px;">SITE :</span> <span style="font-weight: 900; font-size: 14.5px;">${siteName}</span>
           </td>
-          <td style="padding: 2.5px 6px; font-weight: bold; text-transform: uppercase; vertical-align: middle; white-space: nowrap;">
-            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">TYPE :</span> <span style="font-weight: 800;">${tradeType}</span>
+          <td style="padding: 4px 8px; font-weight: bold; text-transform: uppercase; vertical-align: middle; white-space: nowrap;">
+            <span style="display: inline-block; width: 85px; font-weight: 800; opacity: 0.85; font-size: 13px;">TYPE :</span> <span style="font-weight: 900; font-size: 14.5px;">${tradeType}</span>
           </td>
         </tr>
         <tr>
-          <td style="border-right: 1px solid #000; padding: 2.5px 6px; font-weight: bold; text-transform: uppercase; vertical-align: middle; white-space: nowrap;">
-            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">MAISTRY :</span> <span style="font-weight: 800;">${contractorName}</span>
+          <td style="border-right: 1px solid #000; padding: 4px 8px; font-weight: bold; text-transform: uppercase; vertical-align: middle; white-space: nowrap;">
+            <span style="display: inline-block; width: 85px; font-weight: 800; opacity: 0.85; font-size: 13px;">MAISTRY :</span> <span style="font-weight: 900; font-size: 14.5px;">${contractorName}</span>
           </td>
-          <td style="padding: 2.5px 6px; font-weight: bold; text-transform: uppercase; vertical-align: middle; white-space: nowrap;">
-            <span style="display: inline-block; width: 75px; font-weight: bold; opacity: 0.85;">REF NO :</span> <span style="font-weight: 800;">${voucherNo}</span>
+          <td style="padding: 4px 8px; font-weight: bold; text-transform: uppercase; vertical-align: middle; white-space: nowrap;">
+            <span style="display: inline-block; width: 85px; font-weight: 800; opacity: 0.85; font-size: 13px;">REF NO :</span> <span style="font-weight: 900; font-size: 14.5px;">${voucherNo}</span>
           </td>
         </tr>
       </table>
 
       <!-- Main Table -->
-      <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; font-size: 11.5px; margin-bottom: 5px; table-layout: fixed;">
+      <table style="width: 100%; border-collapse: collapse; border: 1.5px solid #000; font-size: 13px; margin-bottom: 6px; table-layout: fixed;">
         <thead>
-          <tr style="border-bottom: 1px solid #000; background: rgba(0,0,0,0.06); font-size: 10px; font-weight: 800; text-transform: uppercase;">
-            <th style="border-right: 1px solid #000; padding: 2.5px 2px; width: 26px; text-align: center; vertical-align: middle; white-space: nowrap;">#</th>
-            <th style="border-right: 1px solid #000; padding: 2.5px 6px; text-align: left; vertical-align: middle; white-space: nowrap;">PARTICULARS / DESCRIPTION</th>
-            <th style="border-right: 1px solid #000; padding: 2.5px 4px; width: 72px; text-align: right; vertical-align: middle; white-space: nowrap;">RATE (₹)</th>
-            ${dateLabels.map(lbl => `<th style="border-right: 1px solid #000; padding: 2.5px 1px; width: 44px; text-align: center; font-size: 9.5px; font-weight: 700; vertical-align: middle; white-space: nowrap;">${lbl}</th>`).join('')}
-            <th style="border-right: 1px solid #000; padding: 2.5px 2px; width: 46px; text-align: center; vertical-align: middle; white-space: nowrap;">QTY</th>
-            <th style="padding: 2.5px 6px; width: 82px; text-align: right; vertical-align: middle; white-space: nowrap;">AMOUNT</th>
+          <tr style="border-bottom: 1.5px solid #000; background: rgba(0,0,0,0.06); font-size: 12px; font-weight: 800; text-transform: uppercase;">
+            <th style="border-right: 1px solid #000; padding: 4px 2px; width: 4%; text-align: center; vertical-align: middle; white-space: nowrap;">#</th>
+            <th style="border-right: 1px solid #000; padding: 4px 6px; width: 28%; text-align: left; vertical-align: middle; white-space: nowrap;">PARTICULARS / DESCRIPTION</th>
+            <th style="border-right: 1px solid #000; padding: 4px 4px; width: 10%; text-align: right; vertical-align: middle; white-space: nowrap; font-size: 11.5px;">RATE (₹)</th>
+            ${dateLabels.map(lbl => `<th style="border-right: 1px solid #000; padding: 4px 1px; width: 5.5%; text-align: center; font-size: 11px; font-weight: 700; vertical-align: middle; white-space: nowrap;">${lbl}</th>`).join('')}
+            <th style="border-right: 1px solid #000; padding: 4px 2px; width: 7%; text-align: center; vertical-align: middle; white-space: nowrap; font-size: 12px;">QTY</th>
+            <th style="padding: 4px 6px; width: 12.5%; text-align: right; vertical-align: middle; white-space: nowrap; font-size: 12px;">AMOUNT</th>
           </tr>
         </thead>
         <tbody>
           ${categoriesHtml}
           <!-- Total Row -->
-          <tr style="border-top: 1.5px solid #000; font-weight: bold; background: rgba(0,0,0,0.05);">
-            <td colspan="11" style="border-right: 1px solid #000; padding: 2.5px 8px; text-align: right; font-size: 11.5px; text-transform: uppercase; font-weight: 900; vertical-align: middle; white-space: nowrap;">
+          <tr style="border-top: 2px solid #000; font-weight: bold; background: rgba(0,0,0,0.05);">
+            <td colspan="11" style="border-right: 1px solid #000; padding: 4px 8px; text-align: right; font-size: 14px; text-transform: uppercase; font-weight: 900; vertical-align: middle; white-space: nowrap;">
               TOTAL AMOUNT :
             </td>
-            <td style="padding: 2.5px 6px; text-align: right; font-size: 13.5px; font-weight: 900; font-family: monospace; vertical-align: middle; white-space: nowrap;">
+            <td style="padding: 4px 6px; text-align: right; font-size: 16.5px; font-weight: 900; font-family: monospace; vertical-align: middle; white-space: nowrap;">
               ₹${Math.round(grandTotal).toLocaleString('en-IN')}
             </td>
           </tr>
           ${commissionHtml}
           <!-- Amount in Words -->
           <tr style="border-top: 1px solid #000; background: rgba(0,0,0,0.02);">
-            <td colspan="12" style="padding: 2.5px 8px; font-size: 10.5px; vertical-align: middle; white-space: nowrap;">
-              <span style="font-weight: 800; text-transform: uppercase; opacity: 0.85; margin-right: 6px;">AMOUNT IN WORDS:</span>
-              <span style="font-style: italic; font-weight: 800; font-family: monospace; font-size: 11px;">${numberToWords(hasCommission && commPct > 0 ? grandTotal + Math.round(grandTotal * (commPct / 100)) : grandTotal)}</span>
+            <td colspan="12" style="padding: 4px 8px; font-size: 12px; vertical-align: middle; white-space: nowrap;">
+              <span style="font-weight: 800; text-transform: uppercase; opacity: 0.85; margin-right: 6px; font-size: 12px;">AMOUNT IN WORDS:</span>
+              <span style="font-style: italic; font-weight: 800; font-family: monospace; font-size: 13px;">${numberToWords(hasCommission && commPct > 0 ? grandTotal + Math.round(grandTotal * (commPct / 100)) : grandTotal)}</span>
             </td>
           </tr>
         </tbody>
       </table>
 
       <!-- Signatures Area (Table format for flawless alignment across all devices and pdf exports) -->
-      <table style="width: 100%; border: none; margin-top: 14px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; border-collapse: collapse;">
+      <table style="width: 100%; border: none; margin-top: 16px; font-size: 12px; font-weight: 800; text-transform: uppercase; border-collapse: collapse;">
         <tr>
           <td style="width: 26%; text-align: center; border: none; padding: 0; vertical-align: top;">
-            <div style="border-top: 1.5px solid #000; margin: 0 10px; padding-top: 3px;">ENGINEER</div>
+            <div style="border-top: 2px solid #000; margin: 0 10px; padding-top: 4px;">ENGINEER</div>
           </td>
           <td style="width: 11%; border: none; padding: 0;"></td>
           <td style="width: 26%; text-align: center; border: none; padding: 0; vertical-align: top;">
-            <div style="border-top: 1.5px solid #000; margin: 0 10px; padding-top: 3px;">SUPERVISOR</div>
+            <div style="border-top: 2px solid #000; margin: 0 10px; padding-top: 4px;">SUPERVISOR</div>
           </td>
           <td style="width: 11%; border: none; padding: 0;"></td>
           <td style="width: 26%; text-align: center; border: none; padding: 0; vertical-align: top;">
-            <div style="border-top: 1.5px solid #000; margin: 0 10px; padding-top: 3px;">RECEIVER</div>
+            <div style="border-top: 2px solid #000; margin: 0 10px; padding-top: 4px;">RECEIVER</div>
           </td>
         </tr>
       </table>
@@ -316,7 +334,7 @@ export const generateAndDownloadA5SlipFromItem = async (item) => {
   container.style.position = 'fixed';
   container.style.left = '-9999px';
   container.style.top = '0';
-  container.style.width = '800px';
+  container.style.width = '790px';
   container.style.backgroundColor = '#ffffff';
 
   container.innerHTML = buildA5SlipHtml(item);
@@ -346,8 +364,8 @@ export const printA5SlipFromItem = (item) => {
         <title>Weekly Slip - ${item.voucher_no || item.id}</title>
         <style>
           @page {
-            size: a5 landscape;
-            margin: 4mm 5mm 4mm 5mm;
+            size: landscape;
+            margin: 5mm 6mm 5mm 6mm;
           }
           * {
             box-sizing: border-box;
