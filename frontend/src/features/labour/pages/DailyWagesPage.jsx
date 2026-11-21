@@ -1110,65 +1110,71 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
       />
 
       {/* Tabs Navigation & Action Toolbar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-surface border border-border rounded-xl p-2.5 shadow-xs mb-4">
-        <div className="flex items-center gap-1.5 overflow-x-auto">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 bg-surface border border-border rounded-xl p-2 sm:p-2.5 shadow-xs mb-4">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
           <button
             onClick={() => setActiveTab('sites')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'sites' ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-muted'}`}
+            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'sites' ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-muted'}`}
           >
-            <Building2 className="w-4 h-4" />
+            <Building2 className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
             Sites & Daily Entry
           </button>
           <button
             onClick={() => setActiveTab('weekly')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'weekly' ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-muted'}`}
+            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'weekly' ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-muted'}`}
           >
-            <FileSpreadsheet className="w-4 h-4" />
+            <FileSpreadsheet className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
             Weekly Wages Report
           </button>
           <button
             onClick={() => setActiveTab('registers')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'registers' ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-muted'}`}
+            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'registers' ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-muted'}`}
           >
-            <FileText className="w-4 h-4" />
+            <FileText className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
             Daily Registers ({dailyWagesList.length})
           </button>
           <button
             onClick={() => setActiveTab('templates')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'templates' ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-muted'}`}
+            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${activeTab === 'templates' ? 'bg-primary text-white shadow-sm' : 'text-text-secondary hover:bg-surface-muted'}`}
           >
-            <Layers className="w-4 h-4" />
+            <Layers className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
             Trade Rate Templates
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-3 sm:flex sm:items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
             size="sm"
             onClick={() => navigate('/subcontracts/weekly-payments')}
-            className="gap-1.5 text-xs font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+            className="h-8 sm:h-9 px-1.5 sm:px-3 gap-1 sm:gap-1.5 text-[10.5px] sm:text-xs font-semibold text-emerald-700 border-emerald-200 hover:bg-emerald-50 whitespace-nowrap justify-center"
+            title="Weekly Payment Slips"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-            Weekly Payment Slips
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="hidden sm:inline">Weekly Payment Slips</span>
+            <span className="sm:hidden">Weekly Slips</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setIsTemplateModalOpen(true)}
-            className="gap-1.5 text-xs font-medium"
+            className="h-8 sm:h-9 px-1.5 sm:px-3 gap-1 sm:gap-1.5 text-[10.5px] sm:text-xs font-medium whitespace-nowrap justify-center"
+            title="Add Template"
           >
-            <Plus className="w-3.5 h-3.5" />
-            Add Template
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Add Template</span>
+            <span className="sm:hidden">Template</span>
           </Button>
           <Button
             variant="primary"
             size="sm"
             onClick={() => setIsSubcontractorModalOpen(true)}
-            className="gap-1.5 text-xs font-semibold"
+            className="h-8 sm:h-9 px-1.5 sm:px-3 gap-1 sm:gap-1.5 text-[10.5px] sm:text-xs font-semibold whitespace-nowrap justify-center"
+            title="Add Subcontractor"
           >
-            <Users className="w-3.5 h-3.5" />
-            Add Subcontractor
+            <Users className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Add Subcontractor</span>
+            <span className="sm:hidden">Subcontractor</span>
           </Button>
         </div>
       </div>
@@ -1380,32 +1386,34 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
               </div>
 
               {/* Row 2 on Mobile / Right Section on Desktop: Action Buttons */}
-              <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 shrink-0 pt-1 lg:pt-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 w-full lg:w-auto shrink-0 pt-1 lg:pt-0">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleExportExcel}
                   disabled={!weeklyReportData || weeklyReportData.matrix?.length === 0}
-                  className="h-9 px-2.5 sm:px-3 gap-1.5 text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50 font-bold shadow-xs whitespace-nowrap"
+                  className="flex-1 lg:flex-initial h-8.5 sm:h-9 px-2 sm:px-3 gap-1 sm:gap-1.5 text-[11px] sm:text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50 font-bold shadow-xs whitespace-nowrap justify-center"
                 >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Export Excel (.xlsx)</span>
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span className="hidden sm:inline">Export Excel (.xlsx)</span>
+                  <span className="sm:hidden">Excel (.xlsx)</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleExportPdf}
                   disabled={!weeklyReportData || weeklyReportData.matrix?.length === 0}
-                  className="h-9 px-2.5 sm:px-3 gap-1.5 text-xs text-rose-700 border-rose-300 hover:bg-rose-50 font-bold shadow-xs whitespace-nowrap"
+                  className="flex-1 lg:flex-initial h-8.5 sm:h-9 px-2 sm:px-3 gap-1 sm:gap-1.5 text-[11px] sm:text-xs text-rose-700 border-rose-300 hover:bg-rose-50 font-bold shadow-xs whitespace-nowrap justify-center"
                 >
-                  <Download className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Download PDF</span>
+                  <Download className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span className="hidden sm:inline">Download PDF</span>
+                  <span className="sm:hidden">PDF</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={loadWeeklyReport}
-                  className="h-9 w-9 p-0 flex items-center justify-center border-border hover:bg-surface-muted shrink-0"
+                  className="h-8.5 sm:h-9 w-8.5 sm:w-9 p-0 flex items-center justify-center border-border hover:bg-surface-muted shrink-0"
                   title="Refresh Report"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 text-text-secondary ${loadingWeekly ? 'animate-spin' : ''}`} />
