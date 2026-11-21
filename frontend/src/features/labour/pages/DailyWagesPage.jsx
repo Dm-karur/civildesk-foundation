@@ -1315,11 +1315,11 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
         <div className="space-y-4">
           {/* Controls & Filter Bar */}
           <div className="bg-surface border border-border rounded-xl p-4 shadow-xs space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
               {/* Filters */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 flex-1">
-                <div>
-                  <label className="block text-[10px] font-bold text-text-secondary uppercase mb-1">
+              <div className="flex flex-wrap items-end gap-3 flex-1">
+                <div className="w-full sm:w-52 md:w-56 min-w-[200px]">
+                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1.5 tracking-wider">
                     Select Site
                   </label>
                   <Select
@@ -1331,8 +1331,8 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
                     ]}
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-text-secondary uppercase mb-1">
+                <div className="w-full sm:w-52 md:w-56 min-w-[200px]">
+                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1.5 tracking-wider">
                     Select Subcontractor
                   </label>
                   <Select
@@ -1344,31 +1344,34 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
                     ]}
                   />
                 </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-text-secondary uppercase mb-1">
+                <div className="min-w-fit">
+                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1.5 tracking-wider">
                     Week Period
                   </label>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 h-9">
                     <button
+                      type="button"
                       onClick={() => handleShiftWeek(-1)}
-                      className="p-2 border border-border rounded-lg hover:bg-surface-muted text-text-secondary"
+                      className="h-9 w-9 flex items-center justify-center border border-border rounded-sm hover:bg-surface-muted text-text-secondary transition-colors"
                       title="Previous Week"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
-                    <div className="flex-1 text-center py-1.5 px-2 bg-surface-muted rounded-lg text-xs font-bold text-text-primary">
+                    <div className="h-9 flex items-center justify-center px-3 bg-surface-muted border border-border rounded-sm text-xs font-bold text-text-primary whitespace-nowrap min-w-[190px]">
                       {weekRange.startDate} → {weekRange.endDate}
                     </div>
                     <button
+                      type="button"
                       onClick={() => handleShiftWeek(1)}
-                      className="p-2 border border-border rounded-lg hover:bg-surface-muted text-text-secondary"
+                      className="h-9 w-9 flex items-center justify-center border border-border rounded-sm hover:bg-surface-muted text-text-secondary transition-colors"
                       title="Next Week"
                     >
                       <ChevronRight className="w-4 h-4" />
                     </button>
                     <button
+                      type="button"
                       onClick={handleResetToCurrentWeek}
-                      className="px-2.5 py-1.5 border border-border rounded-lg hover:bg-surface-muted text-[11px] font-semibold text-primary whitespace-nowrap"
+                      className="h-9 px-3 flex items-center justify-center border border-border rounded-sm hover:bg-surface-muted text-xs font-semibold text-primary whitespace-nowrap transition-colors"
                     >
                       This Week
                     </button>
@@ -1377,13 +1380,13 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
               </div>
 
               {/* Action Buttons: Excel & PDF */}
-              <div className="flex items-center gap-2.5 self-end lg:self-center pt-2 lg:pt-0">
+              <div className="flex items-center gap-2.5 shrink-0 self-end">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleExportExcel}
                   disabled={!weeklyReportData || weeklyReportData.matrix?.length === 0}
-                  className="gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50 font-bold shadow-xs"
+                  className="h-9 gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50 font-bold shadow-xs whitespace-nowrap"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                   Export Excel (.xlsx)
@@ -1393,7 +1396,7 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
                   size="sm"
                   onClick={handleExportPdf}
                   disabled={!weeklyReportData || weeklyReportData.matrix?.length === 0}
-                  className="gap-2 text-rose-700 border-rose-300 hover:bg-rose-50 font-bold shadow-xs"
+                  className="h-9 gap-2 text-rose-700 border-rose-300 hover:bg-rose-50 font-bold shadow-xs whitespace-nowrap"
                 >
                   <Download className="w-4 h-4 text-rose-600" />
                   Download PDF
@@ -1402,7 +1405,7 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
                   variant="outline"
                   size="sm"
                   onClick={loadWeeklyReport}
-                  className="p-2"
+                  className="h-9 w-9 p-0 flex items-center justify-center border-border hover:bg-surface-muted"
                   title="Refresh Report"
                 >
                   <RefreshCw className={`w-4 h-4 ${loadingWeekly ? 'animate-spin' : ''}`} />
