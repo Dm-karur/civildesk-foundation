@@ -1314,12 +1314,12 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
       {activeTab === 'weekly' && (
         <div className="space-y-4">
           {/* Controls & Filter Bar */}
-          <div className="bg-surface border border-border rounded-xl p-4 shadow-xs space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-              {/* Filters */}
-              <div className="flex flex-wrap items-end gap-3 flex-1">
-                <div className="w-full sm:w-52 md:w-56 min-w-[200px]">
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1.5 tracking-wider">
+          <div className="bg-surface border border-border rounded-xl p-3 sm:p-4 shadow-xs">
+            <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-2.5 lg:gap-3">
+              {/* Row 1 on Mobile / Left Section on Desktop */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-end gap-2 sm:gap-2.5 flex-1 min-w-0">
+                <div className="w-full lg:w-40 xl:w-44 shrink-0">
+                  <label className="block text-[10.5px] font-bold text-text-secondary uppercase mb-1 tracking-wider whitespace-nowrap">
                     Select Site
                   </label>
                   <Select
@@ -1331,8 +1331,8 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
                     ]}
                   />
                 </div>
-                <div className="w-full sm:w-52 md:w-56 min-w-[200px]">
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1.5 tracking-wider">
+                <div className="w-full lg:w-44 xl:w-48 shrink-0">
+                  <label className="block text-[10.5px] font-bold text-text-secondary uppercase mb-1 tracking-wider whitespace-nowrap">
                     Select Subcontractor
                   </label>
                   <Select
@@ -1344,26 +1344,26 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
                     ]}
                   />
                 </div>
-                <div className="min-w-fit">
-                  <label className="block text-[11px] font-bold text-text-secondary uppercase mb-1.5 tracking-wider">
+                <div className="col-span-1 sm:col-span-2 lg:col-span-1 lg:w-auto shrink-0">
+                  <label className="block text-[10.5px] font-bold text-text-secondary uppercase mb-1 tracking-wider whitespace-nowrap">
                     Week Period
                   </label>
-                  <div className="flex items-center gap-1.5 h-9">
+                  <div className="flex items-center gap-1 h-9">
                     <button
                       type="button"
                       onClick={() => handleShiftWeek(-1)}
-                      className="h-9 w-9 flex items-center justify-center border border-border rounded-sm hover:bg-surface-muted text-text-secondary transition-colors"
+                      className="h-9 w-8 flex items-center justify-center border border-border rounded-sm hover:bg-surface-muted text-text-secondary transition-colors shrink-0"
                       title="Previous Week"
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </button>
-                    <div className="h-9 flex items-center justify-center px-3 bg-surface-muted border border-border rounded-sm text-xs font-bold text-text-primary whitespace-nowrap min-w-[190px]">
+                    <div className="h-9 px-2 sm:px-2.5 flex items-center justify-center bg-surface-muted border border-border rounded-sm text-[11.5px] font-bold text-text-primary whitespace-nowrap">
                       {weekRange.startDate} → {weekRange.endDate}
                     </div>
                     <button
                       type="button"
                       onClick={() => handleShiftWeek(1)}
-                      className="h-9 w-9 flex items-center justify-center border border-border rounded-sm hover:bg-surface-muted text-text-secondary transition-colors"
+                      className="h-9 w-8 flex items-center justify-center border border-border rounded-sm hover:bg-surface-muted text-text-secondary transition-colors shrink-0"
                       title="Next Week"
                     >
                       <ChevronRight className="w-4 h-4" />
@@ -1371,7 +1371,7 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
                     <button
                       type="button"
                       onClick={handleResetToCurrentWeek}
-                      className="h-9 px-3 flex items-center justify-center border border-border rounded-sm hover:bg-surface-muted text-xs font-semibold text-primary whitespace-nowrap transition-colors"
+                      className="h-9 px-2 sm:px-2.5 flex items-center justify-center border border-border rounded-sm hover:bg-surface-muted text-[11px] font-semibold text-primary whitespace-nowrap transition-colors shrink-0"
                     >
                       This Week
                     </button>
@@ -1379,36 +1379,36 @@ export function DailyWagesPage({ isSubWorkModule = false }) {
                 </div>
               </div>
 
-              {/* Action Buttons: Excel & PDF */}
-              <div className="flex items-center gap-2.5 shrink-0 self-end">
+              {/* Row 2 on Mobile / Right Section on Desktop: Action Buttons */}
+              <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-2 shrink-0 pt-1 lg:pt-0">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleExportExcel}
                   disabled={!weeklyReportData || weeklyReportData.matrix?.length === 0}
-                  className="h-9 gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50 font-bold shadow-xs whitespace-nowrap"
+                  className="h-9 px-2.5 sm:px-3 gap-1.5 text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50 font-bold shadow-xs whitespace-nowrap"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                  Export Excel (.xlsx)
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Export Excel (.xlsx)</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleExportPdf}
                   disabled={!weeklyReportData || weeklyReportData.matrix?.length === 0}
-                  className="h-9 gap-2 text-rose-700 border-rose-300 hover:bg-rose-50 font-bold shadow-xs whitespace-nowrap"
+                  className="h-9 px-2.5 sm:px-3 gap-1.5 text-xs text-rose-700 border-rose-300 hover:bg-rose-50 font-bold shadow-xs whitespace-nowrap"
                 >
-                  <Download className="w-4 h-4 text-rose-600" />
-                  Download PDF
+                  <Download className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Download PDF</span>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={loadWeeklyReport}
-                  className="h-9 w-9 p-0 flex items-center justify-center border-border hover:bg-surface-muted"
+                  className="h-9 w-9 p-0 flex items-center justify-center border-border hover:bg-surface-muted shrink-0"
                   title="Refresh Report"
                 >
-                  <RefreshCw className={`w-4 h-4 ${loadingWeekly ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 text-text-secondary ${loadingWeekly ? 'animate-spin' : ''}`} />
                 </Button>
               </div>
             </div>
